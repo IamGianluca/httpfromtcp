@@ -8,9 +8,6 @@ use std::{
 fn get_lines_channel(mut reader: BufReader<File>) -> Receiver<String> {
     let (sender, receiver) = channel();
     thread::spawn(move || {
-        // for line in reader.lines() {
-        //     sender.send(line.unwrap()).unwrap();
-        // }
         let mut buffer = [0u8; 8];
         let mut current_line = String::new();
         loop {
