@@ -1,11 +1,11 @@
 use std::{
-    fs::File,
     io::{self, BufReader, Read},
+    net::{TcpListener, TcpStream},
     sync::mpsc::{Receiver, channel},
     thread,
 };
 
-fn get_lines_channel(mut reader: BufReader<File>) -> Receiver<String> {
+fn get_lines_channel(mut reader: BufReader<TcpStream>) -> Receiver<String> {
     let (sender, receiver) = channel();
     thread::spawn(move || {
         let mut buffer = [0u8; 8];
@@ -14,8 +14,7 @@ fn get_lines_channel(mut reader: BufReader<File>) -> Receiver<String> {
             match reader.read(&mut buffer) {
                 Ok(0) => break, // EOF
                 Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&buffer[..n]);
-                    let chunk = chunk.to_string();
+                    let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
 
                     if let Some((before_newline, after_newline)) = chunk.split_once("\n") {
                         current_line.push_str(before_newline);
@@ -29,18 +28,24 @@ fn get_lines_channel(mut reader: BufReader<File>) -> Receiver<String> {
             }
         }
     });
-
-    receiver // Return immediately!
+    receiver
 }
 
 fn main() -> io::Result<()> {
-    let file = File::open("messages.txt")?;
-    let reader = BufReader::new(file);
+    // let file = File::open("messages.txt")?;
+    let listener = TcpListener::bind("127.0.0.1:42069")?;
 
-    let receiver = get_lines_channel(reader);
-    for line in receiver {
-        println!("read: {}", line);
+    loop {
+        let (stream, _addr) = listener.accept()?;
+        println!("Connection accepted.");
+
+        let reader = BufReader::new(stream);
+        let receiver = get_lines_channel(reader);
+
+        for line in receiver {
+            println!("{}", line);
+        }
+
+        println!("Connection closed.");
     }
-
-    Ok(())
 }
