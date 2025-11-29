@@ -32,7 +32,6 @@ fn get_lines_channel(mut reader: BufReader<TcpStream>) -> Receiver<String> {
 }
 
 fn main() -> io::Result<()> {
-    // let file = File::open("messages.txt")?;
     let listener = TcpListener::bind("127.0.0.1:42069")?;
 
     loop {
