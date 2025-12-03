@@ -19,7 +19,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
     if v.len() != 3 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "expected 3 parts in request line, got {v.len()}",
+            "invalid request line format",
         ));
     }
 
