@@ -16,6 +16,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 
     let v: Vec<&str> = line_string.split_whitespace().collect();
 
+    // Validate first-line length
     if v.len() != 3 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -23,6 +24,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         ));
     }
 
+    // Extract HTTP version
     let http_version = v[2]
         .strip_prefix("HTTP/")
         .ok_or(io::Error::new(
@@ -30,6 +32,14 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
             "missing HTTP/ prefix",
         ))?
         .to_string();
+
+    // Validate method
+    if v[0] != v[0].to_uppercase() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "method must be uppercase",
+        ));
+    }
 
     Ok(Request {
         request_line: RequestLine {
@@ -78,6 +88,15 @@ mod tests {
     #[test]
     fn test_invalid_number_of_parts_in_request_line() {
         let input = "/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
+        let reader = BufReader::new(input.as_bytes());
+
+        let r = request_from_reader(reader);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_method_non_capitalized() {
+        let input = "get / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(input.as_bytes());
 
         let r = request_from_reader(reader);
