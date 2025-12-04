@@ -130,4 +130,45 @@ mod tests {
         let r = request_from_reader(reader);
         assert!(r.is_err());
     }
+    #[test]
+    fn test_good_post_request_with_path() {
+        let input = "POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
+        let reader = BufReader::new(input.as_bytes());
+
+        let r = request_from_reader(reader);
+        assert!(r.is_ok());
+
+        let r = r.unwrap();
+        assert_eq!("POST", r.request_line.method);
+        assert_eq!("/coffee", r.request_line.request_target);
+        assert_eq!("1.1", r.request_line.http_version);
+    }
+
+    #[test]
+    fn test_empty_request() {
+        let input = "";
+        let reader = BufReader::new(input.as_bytes());
+        let r = request_from_reader(reader);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_missing_http_version() {
+        let input = "GET /\r\n";
+        let reader = BufReader::new(input.as_bytes());
+        let r = request_from_reader(reader);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_request_with_query_params() {
+        let input = "GET /coffee?flavor=dark HTTP/1.1\r\n\r\n";
+        let reader = BufReader::new(input.as_bytes());
+
+        let r = request_from_reader(reader);
+        assert!(r.is_ok());
+
+        let r = r.unwrap();
+        assert_eq!("/coffee?flavor=dark", r.request_line.request_target);
+    }
 }
