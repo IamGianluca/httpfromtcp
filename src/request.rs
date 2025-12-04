@@ -33,6 +33,13 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         ))?
         .to_string();
 
+    if http_version != "1.1" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "only HTTP 1.1 is currently supported",
+        ));
+    }
+
     // Validate method
     if v[0] != v[0].to_uppercase() {
         return Err(io::Error::new(
@@ -97,6 +104,15 @@ mod tests {
     #[test]
     fn test_method_non_capitalized() {
         let input = "get / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
+        let reader = BufReader::new(input.as_bytes());
+
+        let r = request_from_reader(reader);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_only_http_1_1_supported() {
+        let input = "GET / HTTP/1.0\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(input.as_bytes());
 
         let r = request_from_reader(reader);
