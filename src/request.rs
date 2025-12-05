@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Read};
+use std::io::{self, BufRead};
 
 pub struct Request {
     pub request_line: RequestLine,
@@ -8,50 +8,6 @@ pub struct RequestLine {
     pub http_version: String,
     pub request_target: String,
     pub method: String,
-}
-
-/// A reader that simulates reading data in small chunks from a network connection.
-/// Useful for testing streaming/partial reads.
-struct ChunkReader {
-    data: String,
-    num_bytes_per_read: usize,
-    pos: usize,
-}
-
-impl ChunkReader {
-    fn new(data: String, num_bytes_per_read: usize) -> Self {
-        ChunkReader {
-            data,
-            num_bytes_per_read,
-            pos: 0,
-        }
-    }
-}
-
-impl Read for ChunkReader {
-    /// Read reads up to len(buf) or num_bytes_per_read bytes from the string per call.
-    /// Returns the number of bytes read, or 0 to indicate EOF.
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If we've read all the data, return EOF (0 bytes read)
-        if self.pos >= self.data.len() {
-            return Ok(0);
-        }
-
-        // Calculate how much to read (min of chunk size and remaining data)
-        let end_index = std::cmp::min(self.pos + self.num_bytes_per_read, self.data.len());
-
-        // Get the chunk to read
-        let chunk = &self.data.as_bytes()[self.pos..end_index];
-        let n = chunk.len();
-
-        // Copy chunk into the provided buffer
-        buf[..n].copy_from_slice(chunk);
-
-        // Update position
-        self.pos += n;
-
-        Ok(n)
-    }
 }
 
 pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
@@ -106,11 +62,55 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 
 #[cfg(test)]
 mod tests {
-    use std::io::BufReader;
+    use std::io::{BufReader, Read};
 
     use self::request_from_reader;
     use super::*;
+    use test_case::test_case;
 
+    /// A reader that simulates reading data in small chunks from a network connection.
+    /// Useful for testing streaming/partial reads.
+    struct ChunkReader {
+        data: String,
+        num_bytes_per_read: usize,
+        pos: usize,
+    }
+
+    impl ChunkReader {
+        fn new(data: String, num_bytes_per_read: usize) -> Self {
+            ChunkReader {
+                data,
+                num_bytes_per_read,
+                pos: 0,
+            }
+        }
+    }
+
+    impl Read for ChunkReader {
+        /// Read reads up to len(buf) or num_bytes_per_read bytes from the string per call.
+        /// Returns the number of bytes read, or 0 to indicate EOF.
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            // If we've read all the data, return EOF (0 bytes read)
+            if self.pos >= self.data.len() {
+                return Ok(0);
+            }
+
+            // Calculate how much to read (min of chunk size and remaining data)
+            let end_index = std::cmp::min(self.pos + self.num_bytes_per_read, self.data.len());
+
+            // Get the chunk to read
+            let chunk = &self.data.as_bytes()[self.pos..end_index];
+            let n = chunk.len();
+
+            // Copy chunk into the provided buffer
+            buf[..n].copy_from_slice(chunk);
+
+            // Update position
+            self.pos += n;
+
+            Ok(n)
+        }
+    }
     #[test]
     fn test_good_get_request_line() {
         let input = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
@@ -227,11 +227,13 @@ mod tests {
         assert_eq!(&buf[..2], b"GE");
     }
 
-    #[test]
-    fn test_chunk_reader_integration_in_request_from_reader() {
+    #[test_case(1; "one byte chunks")]
+    #[test_case(3; "three byte chunks")]
+    #[test_case(22; "chunk as big as entire request")]
+    fn test_chunk_reader_integration_in_request_from_reader(chunk_size: usize) {
         let input = "GET /coffee HTTP/1.1\r\n".to_string();
         // Simulate network reading small chunks
-        let chunk_reader = ChunkReader::new(input, 3);
+        let chunk_reader = ChunkReader::new(input, chunk_size);
         let reader = BufReader::new(chunk_reader);
 
         let r = request_from_reader(reader);
