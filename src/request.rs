@@ -216,15 +216,17 @@ mod tests {
         assert_eq!("/coffee?flavor=dark", r.request_line.request_target);
     }
 
-    #[test]
-    fn test_chunk_reader() {
+    #[test_case(2, "GE")]
+    #[test_case(7, "GET /co")]
+    #[test_case(10, "GET /coffe"; "buffer length of 10-bytes is reached")]
+    fn test_chunk_reader(chunk_length: usize, expected: &str) {
         let input = "GET /coffee HTTP/1.1\r\n".to_string();
-        let mut reader = ChunkReader::new(input, 2); // 2 bytes per read
+        let mut reader = ChunkReader::new(input, chunk_length); // 2 bytes per read
 
         let mut buf = [0_u8; 10];
         let n = reader.read(&mut buf).unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(&buf[..2], b"GE");
+        assert_eq!(n, chunk_length);
+        assert_eq!(&buf[..chunk_length], expected.as_bytes());
     }
 
     #[test_case(1; "one byte chunks")]
