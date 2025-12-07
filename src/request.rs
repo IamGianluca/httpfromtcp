@@ -14,6 +14,15 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
     let mut line_string = String::new();
     reader.read_line(&mut line_string)?;
 
+    let request_line = parse_request_line(line_string)?;
+
+    Ok(Request { request_line })
+}
+
+fn parse_request_line(line_string: String) -> Result<RequestLine, io::Error> {
+    if line_string.contains("\r\n") {
+        eprintln!("Processed {} bytes", line_string.len());
+    }
     let v: Vec<&str> = line_string.split_whitespace().collect();
 
     // Validate first-line length
@@ -51,12 +60,10 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         }
     }
 
-    Ok(Request {
-        request_line: RequestLine {
-            http_version,
-            request_target: v[1].to_string(),
-            method: v[0].to_string(),
-        },
+    Ok(RequestLine {
+        http_version,
+        request_target: v[1].to_string(),
+        method: v[0].to_string(),
     })
 }
 
@@ -218,7 +225,7 @@ mod tests {
 
     #[test_case(2, "GE")]
     #[test_case(7, "GET /co")]
-    #[test_case(10, "GET /coffe"; "buffer length of 10-bytes is reached")]
+    #[test_case(10, "GET /coffe"; "max buffer length of 10-bytes is reached")]
     fn test_chunk_reader(chunk_length: usize, expected: &str) {
         let input = "GET /coffee HTTP/1.1\r\n".to_string();
         let mut reader = ChunkReader::new(input, chunk_length); // 2 bytes per read
