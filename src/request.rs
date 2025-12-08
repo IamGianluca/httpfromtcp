@@ -1,9 +1,11 @@
 use std::io::{self, BufRead};
 
+#[derive(Debug)]
 pub struct Request {
     pub request_line: RequestLine,
 }
 
+#[derive(Debug)]
 pub struct RequestLine {
     pub http_version: String,
     pub request_target: String,
@@ -14,12 +16,22 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
     let mut line_string = String::new();
     reader.read_line(&mut line_string)?;
 
-    let request_line = parse_request_line(line_string)?;
+    // HTTP requires \r\n line endings
+    if !line_string.ends_with("\r\n") && !line_string.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "request line must end with CRLF (\\r\\n)",
+        ));
+    }
+
+    // Remove the \r\n before parsing
+    let line = line_string.trim_end();
+    let request_line = parse_request_line_from_string(line.to_string())?;
 
     Ok(Request { request_line })
 }
 
-fn parse_request_line(line_string: String) -> Result<RequestLine, io::Error> {
+fn parse_request_line_from_string(line_string: String) -> Result<RequestLine, io::Error> {
     if line_string.contains("\r\n") {
         eprintln!("Processed {} bytes", line_string.len());
     }
@@ -252,5 +264,20 @@ mod tests {
         assert_eq!(r.request_line.method, "GET");
         assert_eq!(r.request_line.request_target, "/coffee");
         assert_eq!(r.request_line.http_version, "1.1");
+    }
+
+    #[test_case("GET /coffee HTTP/1.1")]
+    #[test_case("GET /coffee HTTP/1.1/\r")]
+    #[test_case("GET /coffee HTTP/1.1/\n")]
+    fn test_incomplete_request_hangs(input: &str) {
+        // All these tests should fail because request does not include \r\n
+        let reader = BufReader::new(input.as_bytes());
+
+        // This will hang forever waiting for \r\n
+        let r = request_from_reader(reader);
+        dbg!(&r);
+
+        // We'll never reach here
+        assert!(r.is_err());
     }
 }
