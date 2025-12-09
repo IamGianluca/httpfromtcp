@@ -18,20 +18,22 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 
     // HTTP requires \r\n line endings
     if !line_string.ends_with("\r\n") && !line_string.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "request line must end with CRLF (\\r\\n)",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing \r\n"));
     }
 
-    // Remove the \r\n before parsing
+    // Remove the \r\n, then parse the request
     let line = line_string.trim_end();
-    let request_line = parse_request_line_from_string(line.to_string())?;
+    let (request_line, _bytes) = parse_request_line(line.to_string())?;
 
-    Ok(Request { request_line })
+    Ok(Request {
+        request_line: request_line.ok_or(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "incomplete request line",
+        ))?,
+    })
 }
 
-fn parse_request_line_from_string(line_string: String) -> Result<RequestLine, io::Error> {
+fn parse_request_line(line_string: String) -> Result<(Option<RequestLine>, usize), io::Error> {
     if line_string.contains("\r\n") {
         eprintln!("Processed {} bytes", line_string.len());
     }
@@ -39,10 +41,7 @@ fn parse_request_line_from_string(line_string: String) -> Result<RequestLine, io
 
     // Validate first-line length
     if v.len() != 3 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid request line format",
-        ));
+        return Ok((None, 0));
     }
 
     // Extract and validate HTTP version
@@ -72,11 +71,14 @@ fn parse_request_line_from_string(line_string: String) -> Result<RequestLine, io
         }
     }
 
-    Ok(RequestLine {
-        http_version,
-        request_target: v[1].to_string(),
-        method: v[0].to_string(),
-    })
+    Ok((
+        Some(RequestLine {
+            http_version,
+            request_target: v[1].to_string(),
+            method: v[0].to_string(),
+        }),
+        line_string.as_bytes().len(),
+    ))
 }
 
 #[cfg(test)]
