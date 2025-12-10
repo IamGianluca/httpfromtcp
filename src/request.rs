@@ -1,8 +1,19 @@
 use std::io::{self, BufRead};
 
+// An alternative, and perhaps better approach, could be to make Request itself
+// be an Enum, with possible states <Initiatized, Done(RequestLine)>. This would
+// avoid inconsistent states where state=Initiatized but request_line is
+// assigned to a valid RequestLine object, etc.
+#[derive(Debug)]
+pub enum RequestState {
+    Initialized,
+    Done,
+}
+
 #[derive(Debug)]
 pub struct Request {
     pub request_line: RequestLine,
+    pub status: RequestState,
 }
 
 #[derive(Debug)]
@@ -30,6 +41,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
             io::ErrorKind::InvalidData,
             "incomplete request line",
         ))?,
+        status: RequestState::Done,
     })
 }
 
