@@ -1,15 +1,5 @@
 use std::io::{self, BufRead};
 
-// An alternative, and perhaps better approach, could be to make Request itself
-// be an Enum, with possible states <Initiatized, Done(RequestLine)>. This would
-// avoid inconsistent states where state=Initiatized but request_line is
-// assigned to a valid RequestLine object, etc.
-#[derive(Debug)]
-pub enum RequestState {
-    Initialized,
-    Done,
-}
-
 #[derive(Debug)]
 pub struct Request {
     pub request_line: RequestLine,
@@ -21,6 +11,16 @@ pub struct RequestLine {
     pub http_version: String,
     pub request_target: String,
     pub method: String,
+}
+
+// An alternative, and perhaps better approach, could be to make Request itself
+// be an Enum, with possible states <Initiatized, Done(RequestLine)>. This would
+// avoid inconsistent states where state=Initiatized but request_line is
+// assigned to a valid RequestLine object, etc.
+#[derive(Debug)]
+pub enum RequestState {
+    Initialized,
+    Done,
 }
 
 pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
@@ -144,6 +144,7 @@ mod tests {
             Ok(n)
         }
     }
+
     #[test]
     fn test_good_get_request_line() {
         let input = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
