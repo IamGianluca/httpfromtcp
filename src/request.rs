@@ -89,7 +89,7 @@ fn parse_request_line(line_string: String) -> Result<(Option<RequestLine>, usize
             request_target: v[1].to_string(),
             method: v[0].to_string(),
         }),
-        line_string.as_bytes().len(),
+        line_string.len(),
     ))
 }
 
@@ -286,12 +286,7 @@ mod tests {
     fn test_incomplete_request_hangs(input: &str) {
         // All these tests should fail because request does not include \r\n
         let reader = BufReader::new(input.as_bytes());
-
-        // This will hang forever waiting for \r\n
         let r = request_from_reader(reader);
-        dbg!(&r);
-
-        // We'll never reach here
         assert!(r.is_err());
     }
 }
