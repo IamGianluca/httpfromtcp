@@ -2,8 +2,58 @@ use std::io::{self, BufRead};
 
 #[derive(Debug)]
 pub struct Request {
+    // A parser
     pub request_line: RequestLine,
     pub status: RequestState,
+    cache: String,
+}
+
+impl Request {
+    fn new() -> Self {
+        Request {
+            request_line: RequestLine {
+                http_version: "".to_string(),
+                request_target: "".to_string(),
+                method: "".to_string(),
+            },
+            status: RequestState::Initialized,
+            cache: "".to_string(),
+        }
+    }
+
+    pub fn parse(&mut self, data: &[u8]) -> Result<usize, io::Error> {
+        // It accepts the next slice of bytes that needs to be parsed into the Request struct
+        // It updates the "state" of the parser (the Request itself), and the parsed RequestLine field.
+        // It returns the number of bytes it consumed (meaning successfully parsed) and an error if it encountered one.
+        self.cache.push_str(&String::from_utf8_lossy(data));
+
+        // If cache contains \r\n, parse it and update RequestLine
+        if self.cache.contains("\r\n") {
+            // Make a copy of cache for internal usage, and reset self.cache to empty String
+            let x = self.cache.clone();
+            let (before, after) = x.split_once("\r\n").unwrap();
+            self.cache = after.to_string();
+
+            // Parse request line
+            let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+
+            // Update request_line and status attributes
+            self.request_line = match request_line {
+                Some(v) => v,
+                None => return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid input")),
+            };
+            self.status = RequestState::Done;
+
+            // Return number of bytes successfully parsed
+            return Ok(bytes_parsed);
+        }
+        // Else return 0 bytes parsed
+        if self.cache.is_empty() {
+            return Ok(0);
+        };
+        // Return placeholder to signal we still have cache to parse
+        Ok(999)
+    }
 }
 
 #[derive(Debug)]
@@ -24,25 +74,30 @@ pub enum RequestState {
 }
 
 pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
-    let mut line_string = String::new();
-    reader.read_line(&mut line_string)?;
+    let mut req = Request::new();
+    let mut buf = [0_u8; 8];
 
-    // HTTP requires \r\n line endings
-    if !line_string.ends_with("\r\n") && !line_string.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing \r\n"));
+    while let Ok(n) = reader.read(&mut buf) {
+        if n == 0 {
+            break; // EOF reached
+        }
+        match req.parse(&buf[..n]) {
+            Ok(_) => {
+                if matches!(req.status, RequestState::Done) {
+                    break; // Done parsing
+                }
+            }
+            Err(e) => return Err(e),
+        }
     }
 
-    // Remove the \r\n, then parse the request
-    let line = line_string.trim_end();
-    let (request_line, _bytes) = parse_request_line(line.to_string())?;
-
-    Ok(Request {
-        request_line: request_line.ok_or(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "incomplete request line",
-        ))?,
-        status: RequestState::Done,
-    })
+    match req.status {
+        RequestState::Done => Ok(req),
+        RequestState::Initialized => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "could not finish parsing request".to_string(),
+        )),
+    }
 }
 
 fn parse_request_line(line_string: String) -> Result<(Option<RequestLine>, usize), io::Error> {
