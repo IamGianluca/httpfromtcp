@@ -12,12 +12,12 @@ impl Request {
     fn new() -> Self {
         Request {
             request_line: RequestLine {
-                http_version: "".to_string(),
-                request_target: "".to_string(),
-                method: "".to_string(),
+                http_version: String::new(),
+                request_target: String::new(),
+                method: String::new(),
             },
             status: RequestState::Initialized,
-            cache: "".to_string(),
+            cache: String::new(),
         }
     }
 
@@ -31,28 +31,23 @@ impl Request {
         if self.cache.contains("\r\n") {
             // Make a copy of cache for internal usage, and reset self.cache to empty String
             let x = self.cache.clone();
-            let (before, after) = x.split_once("\r\n").unwrap();
-            self.cache = after.to_string();
+            if let Some((before, after)) = x.split_once("\r\n") {
+                self.cache = after.to_string();
 
-            // Parse request line
-            let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+                // Parse request line
+                let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
 
-            // Update request_line and status attributes
-            self.request_line = match request_line {
-                Some(v) => v,
-                None => return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid input")),
+                // Update request_line and status attributes
+                self.request_line = request_line
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid input"))?;
+                self.status = RequestState::Done;
+
+                // Return number of bytes successfully parsed
+                return Ok(bytes_parsed);
             };
-            self.status = RequestState::Done;
-
-            // Return number of bytes successfully parsed
-            return Ok(bytes_parsed);
         }
-        // Else return 0 bytes parsed
-        if self.cache.is_empty() {
-            return Ok(0);
-        };
         // Return placeholder to signal we still have cache to parse
-        Ok(999)
+        Ok(0)
     }
 }
 
