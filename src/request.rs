@@ -36,8 +36,8 @@ impl Request {
         // If cache contains \r\n, parse it and update RequestLine
         if self.cache.contains("\r\n") {
             // Make a copy of cache for internal usage, and reset self.cache to empty String
-            let x = self.cache.clone();
-            if let Some((before, after)) = x.split_once("\r\n") {
+            if let Some((before, after)) = self.cache.split_once("\r\n") {
+                let before = before.to_string();
                 self.cache = after.to_string();
 
                 // Parse request line
