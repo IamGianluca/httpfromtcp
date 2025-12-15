@@ -9,7 +9,7 @@ pub struct Request {
 }
 
 impl Request {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Request {
             request_line: RequestLine {
                 http_version: String::new(),
@@ -96,7 +96,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 
 fn parse_request_line(line_string: String) -> Result<(RequestLine, usize), io::Error> {
     if line_string.contains("\r\n") {
-        eprintln!("Processed {} bytes", line_string.len());
+        eprintln!("Processed {} bytes", line_string.len() + 2); // 2 refers to the \r\n characters
     }
     let v: Vec<&str> = line_string.split_whitespace().collect();
 
