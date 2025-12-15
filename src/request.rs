@@ -5,7 +5,6 @@ pub struct Request {
     // A parser
     pub request_line: RequestLine,
     pub status: RequestState,
-    cache: String,
 }
 
 impl Default for Request {
@@ -23,7 +22,6 @@ impl Request {
                 method: String::new(),
             },
             status: RequestState::Initialized,
-            cache: String::new(),
         }
     }
 
@@ -31,26 +29,22 @@ impl Request {
         // It accepts the next slice of bytes that needs to be parsed into the Request struct
         // It updates the "state" of the parser (the Request itself), and the parsed RequestLine field.
         // It returns the number of bytes it consumed (meaning successfully parsed) and an error if it encountered one.
-        self.cache.push_str(&String::from_utf8_lossy(data));
+        let data_str = String::from_utf8_lossy(data).to_string();
 
-        // If cache contains \r\n, parse it and update RequestLine
-        if self.cache.contains("\r\n") {
-            // Make a copy of cache for internal usage, and reset self.cache to empty String
-            if let Some((before, after)) = self.cache.split_once("\r\n") {
-                let before = before.to_string();
-                self.cache = after.to_string();
+        // If data_str contains \r\n, parse it and update RequestLine
+        if let Some((before, _after)) = data_str.split_once("\r\n") {
+            let before = before.to_string();
 
-                // Parse request line
-                let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+            // Parse request line
+            let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
 
-                // Update request_line and status attributes
-                self.request_line = request_line;
-                self.status = RequestState::Done;
+            // Update request_line and status attributes
+            self.request_line = request_line;
+            self.status = RequestState::Done;
 
-                // Return number of bytes successfully parsed
-                return Ok(bytes_parsed);
-            };
-        }
+            // Return number of bytes successfully parsed
+            return Ok(bytes_parsed);
+        };
         // Return placeholder to signal we still have cache to parse
         Ok(0)
     }
@@ -74,25 +68,31 @@ pub enum RequestState {
 }
 
 pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
-    let mut req = Request::new();
-    let mut buf = [0_u8; 8];
+    let mut request = Request::new();
+    let mut buffer_length = 0;
+    let mut buffer = vec![0_u8; 8];
 
-    while let Ok(n) = reader.read(&mut buf) {
-        if n == 0 {
-            break; // EOF reached
+    loop {
+        // Grow buffer if needed
+        if buffer_length >= buffer.len() {
+            buffer.resize(buffer.len() * 2, 0);
         }
-        match req.parse(&buf[..n]) {
-            Ok(_) => {
-                if matches!(req.status, RequestState::Done) {
-                    break; // Done parsing
-                }
-            }
-            Err(e) => return Err(e),
+        let bytes_read = reader.read(&mut buffer[buffer_length..])?;
+        if bytes_read == 0 {
+            break; // no more data to read
+        };
+
+        buffer_length += bytes_read;
+        let _bytes_parsed = request.parse(&buffer[..buffer_length]);
+
+        match request.status {
+            RequestState::Initialized => continue,
+            RequestState::Done => break,
         }
     }
 
-    match req.status {
-        RequestState::Done => Ok(req),
+    match request.status {
+        RequestState::Done => Ok(request),
         RequestState::Initialized => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "could not finish parsing request".to_string(),
@@ -209,7 +209,7 @@ mod tests {
         let reader = BufReader::new(input.as_bytes());
 
         let r = request_from_reader(reader);
-        assert!(r.is_ok());
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
         assert_eq!("GET", r.request_line.method);
@@ -223,7 +223,7 @@ mod tests {
         let reader = BufReader::new(input.as_bytes());
 
         let r = request_from_reader(reader);
-        assert!(r.is_ok());
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
         assert_eq!("GET", r.request_line.method);
@@ -272,7 +272,7 @@ mod tests {
         let reader = BufReader::new(input.as_bytes());
 
         let r = request_from_reader(reader);
-        assert!(r.is_ok());
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
         assert_eq!("POST", r.request_line.method);
@@ -302,7 +302,7 @@ mod tests {
         let reader = BufReader::new(input.as_bytes());
 
         let r = request_from_reader(reader);
-        assert!(r.is_ok());
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
         assert_eq!("/coffee?flavor=dark", r.request_line.request_target);
@@ -331,7 +331,7 @@ mod tests {
         let reader = BufReader::new(chunk_reader);
 
         let r = request_from_reader(reader);
-        assert!(r.is_ok());
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
         assert_eq!(r.request_line.method, "GET");
