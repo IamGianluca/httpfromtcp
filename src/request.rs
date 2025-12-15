@@ -38,8 +38,7 @@ impl Request {
                 let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
 
                 // Update request_line and status attributes
-                self.request_line = request_line
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid input"))?;
+                self.request_line = request_line;
                 self.status = RequestState::Done;
 
                 // Return number of bytes successfully parsed
@@ -95,7 +94,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
     }
 }
 
-fn parse_request_line(line_string: String) -> Result<(Option<RequestLine>, usize), io::Error> {
+fn parse_request_line(line_string: String) -> Result<(RequestLine, usize), io::Error> {
     if line_string.contains("\r\n") {
         eprintln!("Processed {} bytes", line_string.len());
     }
@@ -103,7 +102,10 @@ fn parse_request_line(line_string: String) -> Result<(Option<RequestLine>, usize
 
     // Validate first-line length
     if v.len() != 3 {
-        return Ok((None, 0));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "more than 3 elements to parse",
+        ));
     }
 
     // Extract and validate HTTP version
@@ -134,11 +136,11 @@ fn parse_request_line(line_string: String) -> Result<(Option<RequestLine>, usize
     }
 
     Ok((
-        Some(RequestLine {
+        RequestLine {
             http_version,
             request_target: v[1].to_string(),
             method: v[0].to_string(),
-        }),
+        },
         line_string.len(),
     ))
 }
