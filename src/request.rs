@@ -8,6 +8,12 @@ pub struct Request {
     cache: String,
 }
 
+impl Default for Request {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Request {
     pub fn new() -> Self {
         Request {
