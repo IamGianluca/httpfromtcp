@@ -147,7 +147,7 @@ fn parse_request_line(line_string: String) -> Result<(RequestLine, usize), io::E
             request_target: v[1].to_string(),
             method: v[0].to_string(),
         },
-        line_string.len(),
+        line_string.len() + 2, // +2 bytes to account for \r\n
     ))
 }
 
@@ -347,5 +347,15 @@ mod tests {
         let reader = BufReader::new(input.as_bytes());
         let r = request_from_reader(reader);
         assert!(r.is_err());
+    }
+
+    #[test_case("GET", 0; "No delimiter - returns 0")]
+    #[test_case("GET / HTTP/1.1\r\n", 16; "Request line (14) + delimiter (2)")]
+    #[test_case("POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 23; "Only parses request line (21 + 2), ignores headers")]
+    fn test_request_parse_return_correct_num_bytes_parsed(input: &str, expected: usize) {
+        let mut request = Request::new();
+
+        let bytes_parsed = request.parse(input.as_bytes()).unwrap();
+        assert_eq!(bytes_parsed, expected);
     }
 }
