@@ -1,5 +1,47 @@
 use std::io::{self, BufRead};
 
+pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
+    let mut request = Request::new();
+    let mut bytes_buffered = 0;
+    let chunk_size = 8_usize;
+    let mut buffer = vec![0_u8; chunk_size];
+
+    loop {
+        // Grow buffer if needed
+        if bytes_buffered >= buffer.len() {
+            buffer.resize(buffer.len() + chunk_size, 0);
+        }
+
+        // Read from reader, and exit if no more data available
+        let bytes_read = reader.read(&mut buffer[bytes_buffered..])?;
+        if bytes_read == 0 {
+            break;
+        }
+        bytes_buffered += bytes_read;
+
+        // Parse data in the buffer. If the parser was able to parse some data, pop first
+        // _bytes_parsed elements from the buffer in order to avoid unnecessary memory consumption
+        let bytes_parsed = request.parse(&buffer[..bytes_buffered])?;
+        if bytes_parsed > 0 {
+            buffer.drain(..bytes_parsed); // Remove parsed bytes
+            bytes_buffered -= bytes_parsed;
+        }
+
+        match request.status {
+            RequestState::Initialized => continue,
+            RequestState::Done => break,
+        }
+    }
+
+    match request.status {
+        RequestState::Done => Ok(request),
+        RequestState::Initialized => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "could not finish parsing request".to_string(),
+        )),
+    }
+}
+
 #[derive(Debug)]
 pub struct Request {
     // A parser
@@ -47,65 +89,6 @@ impl Request {
         };
         // Return placeholder to signal we still have cache to parse
         Ok(0)
-    }
-}
-
-#[derive(Debug)]
-pub struct RequestLine {
-    pub http_version: String,
-    pub request_target: String,
-    pub method: String,
-}
-
-// An alternative, and perhaps better approach, could be to make Request itself
-// be an Enum, with possible states <Initiatized, Done(RequestLine)>. This would
-// avoid inconsistent states where state=Initiatized but request_line is
-// assigned to a valid RequestLine object, etc.
-#[derive(Debug)]
-pub enum RequestState {
-    Initialized,
-    Done,
-}
-
-pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
-    let mut request = Request::new();
-    let mut bytes_buffered = 0;
-    let chunk_size = 8_usize;
-    let mut buffer = vec![0_u8; chunk_size];
-
-    loop {
-        // Grow buffer if needed
-        if bytes_buffered >= buffer.len() {
-            buffer.resize(buffer.len() + chunk_size, 0);
-        }
-
-        // Read from reader, and exit if no more data available
-        let bytes_read = reader.read(&mut buffer[bytes_buffered..])?;
-        if bytes_read == 0 {
-            break;
-        }
-        bytes_buffered += bytes_read;
-
-        // Parse data in the buffer. If the parser was able to parse some data, pop first
-        // _bytes_parsed elements from the buffer in order to avoid unnecessary memory consumption
-        let bytes_parsed = request.parse(&buffer[..bytes_buffered])?;
-        if bytes_parsed > 0 {
-            buffer.drain(..bytes_parsed); // Remove parsed bytes
-            bytes_buffered -= bytes_parsed;
-        }
-
-        match request.status {
-            RequestState::Initialized => continue,
-            RequestState::Done => break,
-        }
-    }
-
-    match request.status {
-        RequestState::Done => Ok(request),
-        RequestState::Initialized => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "could not finish parsing request".to_string(),
-        )),
     }
 }
 
@@ -158,6 +141,23 @@ fn parse_request_line(line_string: String) -> Result<(RequestLine, usize), io::E
         },
         line_string.len() + 2, // +2 bytes to account for \r\n
     ))
+}
+
+#[derive(Debug)]
+pub struct RequestLine {
+    pub http_version: String,
+    pub request_target: String,
+    pub method: String,
+}
+
+// An alternative, and perhaps better approach, could be to make Request itself
+// be an Enum, with possible states <Initiatized, Done(RequestLine)>. This would
+// avoid inconsistent states where state=Initiatized but request_line is
+// assigned to a valid RequestLine object, etc.
+#[derive(Debug)]
+pub enum RequestState {
+    Initialized,
+    Done,
 }
 
 #[cfg(test)]
