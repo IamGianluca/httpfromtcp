@@ -214,10 +214,14 @@ mod tests {
 
     #[test]
     fn test_good_get_request_line() {
+        // Given
         let data = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
@@ -228,10 +232,14 @@ mod tests {
 
     #[test]
     fn test_good_get_request_line_with_path() {
+        // Given
         let data = "GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
@@ -242,45 +250,65 @@ mod tests {
 
     #[test]
     fn test_invalid_number_of_parts_in_request_line() {
+        // Given
         let data = "/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
 
     #[test]
     fn test_method_non_capitalized() {
+        // Given
         let data = "get / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
 
     #[test]
     fn test_invalid_method() {
+        // Given
         let data = "XXX / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
 
     #[test]
     fn test_only_http_1_1_supported() {
+        // Given
         let data = "GET / HTTP/1.0\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
     #[test]
     fn test_good_post_request_with_path() {
+        // Given
         let data = "POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
@@ -291,26 +319,40 @@ mod tests {
 
     #[test]
     fn test_empty_request() {
+        // Given
         let data = "";
         let reader = BufReader::new(data.as_bytes());
+
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
 
     #[test]
     fn test_missing_http_version() {
+        // Given
         let data = "GET /\r\n";
         let reader = BufReader::new(data.as_bytes());
+
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
 
     #[test]
     fn test_request_with_query_params() {
+        // Given
         let data = "GET /coffee?flavor=dark HTTP/1.1\r\n\r\n";
         let reader = BufReader::new(data.as_bytes());
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
@@ -321,11 +363,15 @@ mod tests {
     #[test_case(7, "GET /co")]
     #[test_case(10, "GET /coffe"; "max buffer length of 10-bytes is reached")]
     fn test_chunk_reader(chunk_length: usize, expected: &str) {
+        // Given
         let data = "GET /coffee HTTP/1.1\r\n".to_string();
         let mut reader = ChunkReader::new(data, chunk_length); // 2 bytes per read
-
         let mut buf = [0_u8; 10];
+
+        // When
         let n = reader.read(&mut buf).unwrap();
+
+        // Then
         assert_eq!(n, chunk_length);
         assert_eq!(&buf[..chunk_length], expected.as_bytes());
     }
@@ -334,12 +380,17 @@ mod tests {
     #[test_case(3; "three byte chunks")]
     #[test_case(22; "chunk as big as entire request")]
     fn test_chunk_reader_integration_in_request_from_reader(chunk_size: usize) {
+        // Given
         let data = "GET /coffee HTTP/1.1\r\n".to_string();
+
         // Simulate network reading small chunks
         let chunk_reader = ChunkReader::new(data, chunk_size);
         let reader = BufReader::new(chunk_reader);
 
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
 
         let r = r.unwrap();
@@ -353,8 +404,13 @@ mod tests {
     #[test_case("GET /coffee HTTP/1.1/\n")]
     fn test_incomplete_request_hangs(data: &str) {
         // All these tests should fail because request does not include \r\n
+        // Given
         let reader = BufReader::new(data.as_bytes());
+
+        // When
         let r = request_from_reader(reader);
+
+        // Then
         assert!(r.is_err());
     }
 
@@ -362,9 +418,13 @@ mod tests {
     #[test_case("GET / HTTP/1.1\r\n", 16; "Request line (14) + delimiter (2)")]
     #[test_case("POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 23; "Only parses request line (21 + 2), ignores headers")]
     fn test_request_parse_return_correct_num_bytes_parsed(data: &str, expected: usize) {
+        // Given
         let mut request = Request::new();
 
+        // When
         let bytes_parsed = request.parse(data.as_bytes()).unwrap();
+
+        // Then
         assert_eq!(bytes_parsed, expected);
     }
 }
