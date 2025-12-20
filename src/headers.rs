@@ -28,10 +28,13 @@ impl Headers {
     }
 
     pub fn parse(&mut self, data: &[u8]) -> Result<(usize, bool), io::Error> {
+        // Note: This function will be called over and over until all the
+        // headers are parsed, and it can only parse one key/value pair at a time.
         let data_str = String::from_utf8_lossy(data).to_string();
 
+        // Check whether data include CRLF
         if let Some((before, _after)) = data_str.split_once("\r\n") {
-            // If before is empty, we found the end of headers (\r\n at start)
+            // If nothing before CRLF, we found the end of headers (\r\n at start)
             if before.is_empty() {
                 return Ok((2, true)); // Consumed \r\n, done=true
             }
@@ -68,26 +71,111 @@ mod tests {
     use super::*;
     use test_case::test_case;
 
-    #[test_case("Host: localhost:42069\r\n\r\n", "localhost:42069", 23)]
-    #[test_case("     Host: localhost:42070       \r\n\r\n", "localhost:42070", 35)]
-    fn test_valid_single_header(data: &str, expected: &str, bytes_processed: usize) {
+    #[test]
+    fn test_valid_single_header() {
+        // Given
         let mut headers = Headers::new();
+        let data = "Host: localhost:42069\r\n\r\n";
 
+        // When
         let result = headers.parse(data.as_bytes());
+
+        // Then
         assert!(result.is_ok());
 
         let (n, done) = result.unwrap();
-        assert_eq!(headers.get("Host"), Some(&expected.to_string()));
-        assert_eq!(n, bytes_processed);
+        assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(n, 23);
         assert!(!done);
+    }
+
+    #[test]
+    fn test_valid_single_header_with_extra_whitespaces() {
+        // Given
+        let mut headers = Headers::new();
+        let data = "     Host: localhost:42069       \r\n\r\n";
+
+        // When
+        let result = headers.parse(data.as_bytes());
+
+        // Then
+        assert!(result.is_ok());
+
+        let (n, done) = result.unwrap();
+        assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(n, 35);
+        assert!(!done);
+    }
+
+    #[test]
+    fn test_two_headers_with_existing_headers() {
+        // Given
+        let mut headers = Headers::new();
+        let data1 = "Host: localhost:42069\r\n";
+
+        // When: First call to parse() parses "Host: localhost:42069"
+        let (n1, done1) = headers.parse(data1.as_bytes()).unwrap();
+
+        // Then
+        assert_eq!(n1, 23);
+        assert!(!done1);
+
+        // Given
+        let data2 = "User-Agent: curl/7.81.0\r\n";
+
+        // When: Second call to parse() parses "User-Agent: curl/7.81.0"
+        // The headers map already has "Host" in it (existing headers)
+        let (n2, done2) = headers.parse(data2.as_bytes()).unwrap();
+
+        // Then
+        assert_eq!(n2, 25);
+        assert!(!done2);
+
+        // Verify BOTH headers exist in the map
+        assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(headers.get("User-Agent"), Some(&"curl/7.81.0".to_string()));
+    }
+
+    #[test]
+    fn test_valid_done() {
+        // Given
+        let mut headers = Headers::new();
+        let data1 = "Host: localhost:42069\r\n";
+
+        // When: first call to parse
+        let result1 = headers.parse(data1.as_bytes());
+
+        // Then
+        assert!(result1.is_ok());
+
+        let (n, done) = result1.unwrap();
+        assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(n, 23);
+        assert!(!done);
+
+        // Given
+        let data2 = "\r\n";
+
+        // When: second call to parse
+        let result2 = headers.parse(data2.as_bytes());
+
+        // Then
+        assert!(result2.is_ok());
+        let (n, done) = result2.unwrap();
+        assert_eq!(n, 2);
+        assert!(done);
     }
 
     #[test_case("       Host : localhost:99999       \r\n\r\n")]
     #[test_case("Host : localhost:42069       \r\n\r\n")]
     fn test_invalid_spacing_header(data: &str) {
+        // Given
         let mut headers = Headers::new();
 
+        // When: parsing header with space before colon (invalid per HTTP spec)
         let result = headers.parse(data.as_bytes());
+
+        // Then
         assert!(result.is_err());
     }
 }
