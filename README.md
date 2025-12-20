@@ -7,10 +7,11 @@ This is a solution to the course ["Learn the HTTP Protocol in Go"](https://www.b
 ## Features
 
 - HTTP/1.1 request line parsing
+- HTTP header parsing (case-insensitive, validates formatting)
 - Streaming parser (handles chunked reads)
 - Validates HTTP methods (GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH)
 - TCP listener on `127.0.0.1:42069`
-- Comprehensive test suite
+- Comprehensive test suite 
 
 ## Usage
 
@@ -34,7 +35,8 @@ cargo test
 ```
 src/
 ├── lib.rs              # Module exports
-├── request.rs          # HTTP request parser
+├── request.rs          # HTTP request line parser
+├── headers.rs          # HTTP header parser
 └── bin/
     ├── tcplistener.rs  # TCP server implementation
     └── udpsender.rs    # UDP utilities
@@ -50,7 +52,7 @@ This project demonstrates:
 
 ## Limitations
 
-Currently only parses the HTTP request line. Headers and body parsing are not yet implemented.
+Currently parses request line and headers. Body parsing is not yet implemented.
 
 ## Resources
 
@@ -58,13 +60,9 @@ Currently only parses the HTTP request line. Headers and body parsing are not ye
 - [YouTube lecture](https://www.youtube.com/watch?v=FknTw9bJsXM)
 - [HTTP/1.1 RFC 9112](https://datatracker.ietf.org/doc/html/rfc9112)
 
-## Why Build This?
+## Credits
 
-The course author ([ThePrimeagen](https://www.youtube.com/c/theprimeagen)) is right: building an HTTP server is an excellent exercise for learning a new programming language. It requires:
-- TCP connection handling
-- String parsing and validation
-- State management
-- Error handling
-- Testing strategies
+This project is based on the excellent ["Learn the HTTP Protocol in Go"](https://www.boot.dev/courses/learn-http-protocol-golang) course.
 
-I highly recommend this course and this exercise!
+- **Course Author**: [ThePrimeagen](https://www.youtube.com/c/theprimeagen) - For creating this course and years of quality content
+- **Platform**: [Boot.dev](https://www.boot.dev/) - For hosting and making quality programming education accessible
