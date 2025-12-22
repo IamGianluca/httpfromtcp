@@ -178,4 +178,20 @@ mod tests {
         // Then
         assert!(result.is_err());
     }
+
+    #[test_case("Host: localhost:42069\r\n"; "uppercase header")]
+    #[test_case("host: localhost:42069\r\n"; "lowercase header")]
+    fn test_header_case_insensitive(data: &str) {
+        // Given
+        let mut headers = Headers::new();
+
+        // When
+        let result = headers.parse(data.as_bytes());
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(headers.get("host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(headers.get("HOST"), Some(&"localhost:42069".to_string()));
+    }
 }
