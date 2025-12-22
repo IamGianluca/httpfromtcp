@@ -39,9 +39,9 @@ impl Headers {
                 return Ok((2, true)); // Consumed \r\n, done=true
             }
 
-            // Parse the header line
+            // Parse header line
             if let Some((key, value)) = before.split_once(":") {
-                // Validate: no spaces before the colon (key must not have trailing spaces)
+                // Validate: no spaces before the colon (field name must not have trailing spaces)
                 if key.ends_with(" ") {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
@@ -49,9 +49,21 @@ impl Headers {
                     ));
                 }
 
-                // Populate HashMap
+                // Validate: field name contains only valid characters
                 let key = key.trim().to_string();
+                if !key
+                    .chars()
+                    .all(|c| c.is_ascii_alphabetic() || "!#$%&'*+-.^_`|~".contains(c))
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid character in header name",
+                    ));
+                }
+
                 let value = value.trim().to_string();
+
+                // Populate HashMap
                 self.insert(key, value);
 
                 return Ok((before.len() + 2, false)); // Parsed one header, not done yet
@@ -179,8 +191,8 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test_case("Host: localhost:42069\r\n"; "uppercase header")]
-    #[test_case("host: localhost:42069\r\n"; "lowercase header")]
+    #[test_case("Host: localhost:42069\r\n\r\n"; "uppercase header")]
+    #[test_case("host: localhost:42069\r\n\r\n"; "lowercase header")]
     fn test_header_case_insensitive(data: &str) {
         // Given
         let mut headers = Headers::new();
@@ -193,5 +205,26 @@ mod tests {
         assert_eq!(headers.get("host"), Some(&"localhost:42069".to_string()));
         assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
         assert_eq!(headers.get("HOST"), Some(&"localhost:42069".to_string()));
+    }
+
+    #[test_case("Ho st: value\r\n"; "space in field name")]
+    #[test_case("Host@Name: value\r\n"; "@ symbol")]
+    #[test_case("Host(Name): value\r\n"; "parentheses")]
+    #[test_case("Host[Name]: value\r\n"; "square brackets")]
+    #[test_case("Host{Name}: value\r\n"; "curly braces")]
+    #[test_case("Host/Name: value\r\n"; "forward slash")]
+    #[test_case("Host\\Name: value\r\n"; "backslash")]
+    #[test_case("Host;Name: value\r\n"; "semicolon")]
+    #[test_case("Host=Name: value\r\n"; "equals sign")]
+    #[test_case("Host,Name: value\r\n"; "comma")]
+    fn test_header_with_invalid_character(data: &str) {
+        // Given
+        let mut headers = Headers::new();
+
+        // When
+        let result = headers.parse(data.as_bytes());
+
+        // Then
+        assert!(result.is_err());
     }
 }
