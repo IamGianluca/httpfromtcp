@@ -24,7 +24,15 @@ impl Headers {
 
     pub fn insert(&mut self, key: String, value: String) {
         // HTTP headers are case-insensitive
-        self.inner.insert(key.to_lowercase(), value);
+        // When the same header appears multiple times, values are joined with ", "
+        let k = key.to_lowercase();
+        self.inner
+            .entry(k)
+            .and_modify(|v| {
+                v.push_str(", ");
+                v.push_str(&value);
+            })
+            .or_insert(value);
     }
 
     pub fn parse(&mut self, data: &[u8]) -> Result<(usize, bool), io::Error> {
@@ -261,5 +269,25 @@ mod tests {
         // Then
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), (0, false));
+    }
+
+    #[test]
+    fn test_field_with_multiple_values() {
+        // Given
+        let mut headers = Headers::new();
+        let data1 = "Set-Person: lane-loves-go\r\n";
+        let data2 = "Set-Person: prime-loves-zig\r\n";
+        let data3 = "Set-Person: tj-loves-ocaml\r\n\r\n";
+
+        // When
+        let _result1 = headers.parse(data1.as_bytes());
+        let _result2 = headers.parse(data2.as_bytes());
+        let _result3 = headers.parse(data3.as_bytes());
+
+        // Then
+        assert_eq!(
+            headers.get("Set-Person").unwrap(),
+            &"lane-loves-go, prime-loves-zig, tj-loves-ocaml".to_string()
+        )
     }
 }
