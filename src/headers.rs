@@ -25,9 +25,8 @@ impl Headers {
     pub fn insert(&mut self, key: String, value: String) {
         // HTTP headers are case-insensitive
         // When the same header appears multiple times, values are joined with ", "
-        let k = key.to_lowercase();
         self.inner
-            .entry(k)
+            .entry(key.to_lowercase())
             .and_modify(|v| {
                 v.push_str(", ");
                 v.push_str(&value);
