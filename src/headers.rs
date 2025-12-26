@@ -249,4 +249,17 @@ mod tests {
         // Then
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_incomplete_header_needs_more_data() {
+        // Given
+        let mut headers = Headers::new();
+
+        // When
+        let result = headers.parse("Host: localhost".as_bytes());
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), (0, false));
+    }
 }
