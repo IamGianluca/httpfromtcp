@@ -56,7 +56,7 @@ impl Headers {
                     .all(|c| c.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(c))
                 {
                     return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
+                        io::ErrorKind::InvalidData,
                         "invalid character in header name",
                     ));
                 }
