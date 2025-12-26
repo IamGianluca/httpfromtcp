@@ -53,7 +53,7 @@ impl Headers {
                 let key = key.trim().to_string();
                 if !key
                     .chars()
-                    .all(|c| c.is_ascii_alphabetic() || "!#$%&'*+-.^_`|~".contains(c))
+                    .all(|c| c.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(c))
                 {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -205,6 +205,28 @@ mod tests {
         assert_eq!(headers.get("host"), Some(&"localhost:42069".to_string()));
         assert_eq!(headers.get("Host"), Some(&"localhost:42069".to_string()));
         assert_eq!(headers.get("HOST"), Some(&"localhost:42069".to_string()));
+    }
+
+    #[test_case("Content-MD5: Q2hlY2sgSW50ZWdyaXR5IQ==\r\n", "content-md5", "Q2hlY2sgSW50ZWdyaXR5IQ=="; "Content-MD5 with base64")]
+    #[test_case("X-Custom-Header-123: value\r\n", "x-custom-header-123", "value"; "digits at end")]
+    #[test_case("123-Custom-Header: value\r\n", "123-custom-header", "value"; "digits at start")]
+    #[test_case("H2-Protocol: HTTP/2\r\n", "h2-protocol", "HTTP/2"; "digit in middle")]
+    #[test_case("X-RateLimit-Limit: 1000\r\n", "x-ratelimit-limit", "1000"; "RateLimit header")]
+    #[test_case("MP3-Tag: audio\r\n", "mp3-tag", "audio"; "multiple consecutive digits")]
+    #[test_case("1234567890: all-digits-name\r\n", "1234567890", "all-digits-name"; "only digits")]
+    fn test_header_contains_digits(data: &str, expected_field: &str, expected_value: &str) {
+        // Given
+        let mut headers = Headers::new();
+
+        // When
+        let result = headers.parse(data.as_bytes());
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(
+            headers.get(expected_field),
+            Some(&expected_value.to_string()),
+        );
     }
 
     #[test_case("Ho st: value\r\n"; "space in field name")]
