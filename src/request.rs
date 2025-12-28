@@ -81,36 +81,34 @@ impl Request {
         // itself), and the parsed RequestLine field. It returns the number of
         // bytes it consumed (meaning successfully parsed) and an error if it
         // encountered one.
-        let data_str = String::from_utf8_lossy(data).to_string();
+        let data_str = String::from_utf8_lossy(data);
 
-        // If data_str contains \r\n, parse it and update either RequestLine or
-        // Headers
-        if let Some((before, _after)) = data_str.split_once("\r\n") {
-            let before = before.to_string();
+        // Check if we have a complete line
+        let Some((before, after)) = data_str.split_once("\r\n") else {
+            return Ok(0); // No CRLF found, need more data
+        };
 
-            let (bytes_parsed, done) = if self.request_line.method.is_empty() {
-                // Parse request line
-                let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
-                self.request_line = request_line;
+        if self.request_line.method.is_empty() {
+            // Parse request line
+            let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+            self.request_line = request_line;
 
-                let done = _after == "\r\n";
-                (bytes_parsed, done)
-            } else {
-                // Parse headers
-                let (bytes_parsed, done) = self.headers.parse(data)?;
-                (bytes_parsed, done)
-            };
+            // Check if no headers (empty line immediately after request line)
+            if after == "\r\n" {
+                self.status = RequestState::Done;
+            }
 
-            // If we finished parsing the headers, update status attribute
+            Ok(bytes_parsed)
+        } else {
+            // Parse headers
+            let (bytes_parsed, done) = self.headers.parse(data)?;
+
             if done {
                 self.status = RequestState::Done;
             }
 
-            // Return number of bytes successfully parsed
-            return Ok(bytes_parsed);
-        };
-        // Return placeholder to signal we still have cache to parse
-        Ok(0)
+            Ok(bytes_parsed)
+        }
     }
 }
 
