@@ -1,5 +1,6 @@
 use std::{collections::HashMap, io};
 
+#[derive(Debug)]
 pub struct Headers {
     pub inner: HashMap<String, String>,
 }
@@ -24,7 +25,8 @@ impl Headers {
 
     pub fn insert(&mut self, key: String, value: String) {
         // HTTP headers are case-insensitive
-        // When the same header appears multiple times, values are joined with ", "
+        // When the same header appears multiple times, values are joined with
+        // ", "
         self.inner
             .entry(key.to_lowercase())
             .and_modify(|v| {
@@ -36,7 +38,8 @@ impl Headers {
 
     pub fn parse(&mut self, data: &[u8]) -> Result<(usize, bool), io::Error> {
         // Note: This function will be called over and over until all the
-        // headers are parsed, and it can only parse one key/value pair at a time.
+        // headers are parsed, and it can only parse one key/value pair at a
+        // time.
         let data_str = String::from_utf8_lossy(data).to_string();
 
         // Check whether data include CRLF

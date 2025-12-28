@@ -1,5 +1,7 @@
 use std::io::{self, BufRead};
 
+use crate::headers::Headers;
+
 pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Error> {
     let mut request = Request::new();
     let mut bytes_buffered = 0;
@@ -12,15 +14,13 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
             buffer.resize(buffer.len() + chunk_size, 0);
         }
 
-        // Read from reader, and exit if no more data available
+        // Read from reader
         let bytes_read = reader.read(&mut buffer[bytes_buffered..])?;
-        if bytes_read == 0 {
-            break;
-        }
         bytes_buffered += bytes_read;
 
-        // Parse data in the buffer. If the parser was able to parse some data, pop first
-        // _bytes_parsed elements from the buffer in order to avoid unnecessary memory consumption
+        // Parse data in the buffer. If the parser was able to parse some data,
+        // pop first _bytes_parsed elements from the buffer in order to avoid
+        // unnecessary memory consumption
         let bytes_parsed = request.parse(&buffer[..bytes_buffered])?;
         if bytes_parsed > 0 {
             buffer.drain(..bytes_parsed); // Remove parsed bytes
@@ -28,7 +28,13 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         }
 
         match request.status {
-            RequestState::Initialized => continue,
+            RequestState::Initialized => {
+                // If no more data available, exit
+                if bytes_read == 0 {
+                    break;
+                }
+                continue;
+            }
             RequestState::Done => break,
         }
     }
@@ -46,6 +52,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 pub struct Request {
     // A parser
     pub request_line: RequestLine,
+    pub headers: Headers,
     pub status: RequestState,
 }
 
@@ -63,26 +70,41 @@ impl Request {
                 request_target: String::new(),
                 method: String::new(),
             },
+            headers: Headers::new(),
             status: RequestState::Initialized,
         }
     }
 
     pub fn parse(&mut self, data: &[u8]) -> Result<usize, io::Error> {
-        // It accepts the next slice of bytes that needs to be parsed into the Request struct
-        // It updates the "state" of the parser (the Request itself), and the parsed RequestLine field.
-        // It returns the number of bytes it consumed (meaning successfully parsed) and an error if it encountered one.
+        // It accepts the next slice of bytes that needs to be parsed into the
+        // Request struct. It updates the "state" of the parser (the Request
+        // itself), and the parsed RequestLine field. It returns the number of
+        // bytes it consumed (meaning successfully parsed) and an error if it
+        // encountered one.
         let data_str = String::from_utf8_lossy(data).to_string();
 
-        // If data_str contains \r\n, parse it and update RequestLine
+        // If data_str contains \r\n, parse it and update either RequestLine or
+        // Headers
         if let Some((before, _after)) = data_str.split_once("\r\n") {
             let before = before.to_string();
 
-            // Parse request line
-            let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+            let (bytes_parsed, done) = if self.request_line.method.is_empty() {
+                // Parse request line
+                let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+                self.request_line = request_line;
 
-            // Update request_line and status attributes
-            self.request_line = request_line;
-            self.status = RequestState::Done;
+                let done = _after == "\r\n";
+                (bytes_parsed, done)
+            } else {
+                // Parse headers
+                let (bytes_parsed, done) = self.headers.parse(data)?;
+                (bytes_parsed, done)
+            };
+
+            // If we finished parsing the headers, update status attribute
+            if done {
+                self.status = RequestState::Done;
+            }
 
             // Return number of bytes successfully parsed
             return Ok(bytes_parsed);
@@ -381,7 +403,7 @@ mod tests {
     #[test_case(22; "chunk as big as entire request")]
     fn test_chunk_reader_integration_in_request_from_reader(chunk_size: usize) {
         // Given
-        let data = "GET /coffee HTTP/1.1\r\n".to_string();
+        let data = "GET /coffee HTTP/1.1\r\n\r\n".to_string();
 
         // Simulate network reading small chunks
         let chunk_reader = ChunkReader::new(data, chunk_size);
@@ -426,5 +448,40 @@ mod tests {
 
         // Then
         assert_eq!(bytes_parsed, expected);
+    }
+
+    #[test]
+    fn test_standard_headers() {
+        // Given
+        let data = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n".to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(r.headers.get("host"), Some(&"localhost:42069".to_string()));
+        assert_eq!(
+            r.headers.get("user-agent"),
+            Some(&"curl/7.81.0".to_string())
+        );
+        assert_eq!(r.headers.get("accept"), Some(&"*/*".to_string()));
+    }
+
+    #[test]
+    fn test_malformed_header_missing_colon() {
+        // Given
+        let data = "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n".to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_err());
     }
 }
