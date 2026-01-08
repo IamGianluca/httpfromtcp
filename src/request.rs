@@ -84,7 +84,7 @@ impl Request {
         let data_str = String::from_utf8_lossy(data);
 
         // Check if we have a complete line.
-        let Some((before, after)) = data_str.split_once("\r\n") else {
+        let Some((before, _after)) = data_str.split_once("\r\n") else {
             return Ok(0); // No CRLF found, need more data
         };
 
@@ -95,11 +95,6 @@ impl Request {
                 self.request_line = request_line;
                 // Flag that request line has been parsed and we can now expect to parse the headers
                 self.status = RequestState::ParsingHeaders;
-
-                // Check if no headers (empty line immediately after request line)
-                if after == "\r\n" {
-                    self.status = RequestState::Done;
-                }
 
                 Ok(bytes_parsed)
             }
