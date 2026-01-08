@@ -19,7 +19,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         bytes_buffered += bytes_read;
 
         // Parse data in the buffer. If the parser was able to parse some data,
-        // pop first _bytes_parsed elements from the buffer in order to avoid
+        // pop first bytes_parsed elements from the buffer in order to avoid
         // unnecessary memory consumption
         let bytes_parsed = request.parse(&buffer[..bytes_buffered])?;
         if bytes_parsed > 0 {
@@ -78,12 +78,12 @@ impl Request {
     pub fn parse(&mut self, data: &[u8]) -> Result<usize, io::Error> {
         // It accepts the next slice of bytes that needs to be parsed into the
         // Request struct. It updates the "state" of the parser (the Request
-        // itself), and the parsed RequestLine field. It returns the number of
-        // bytes it consumed (meaning successfully parsed) and an error if it
-        // encountered one.
+        // itself), and the parsed RequestLine and Headers fields. It returns
+        // the number of bytes it consumed (meaning, successfully parsed) or
+        // an error if it encountered one.
         let data_str = String::from_utf8_lossy(data);
 
-        // Check if we have a complete line
+        // Check if we have a complete line.
         let Some((before, after)) = data_str.split_once("\r\n") else {
             return Ok(0); // No CRLF found, need more data
         };
