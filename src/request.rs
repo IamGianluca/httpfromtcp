@@ -28,7 +28,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         }
 
         match request.status {
-            RequestState::Initialized => {
+            RequestState::Initialized | RequestState::ParsingHeaders => {
                 // If no more data available, exit
                 if bytes_read == 0 {
                     break;
@@ -41,7 +41,7 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 
     match request.status {
         RequestState::Done => Ok(request),
-        RequestState::Initialized => Err(io::Error::new(
+        RequestState::Initialized | RequestState::ParsingHeaders => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "could not finish parsing request".to_string(),
         )),
@@ -88,26 +88,35 @@ impl Request {
             return Ok(0); // No CRLF found, need more data
         };
 
-        if self.request_line.method.is_empty() {
-            // Parse request line
-            let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
-            self.request_line = request_line;
+        match self.status {
+            RequestState::Initialized => {
+                // Parse request line
+                let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
+                self.request_line = request_line;
+                // Flag that request line has been parsed and we can now expect to parse the headers
+                self.status = RequestState::ParsingHeaders;
 
-            // Check if no headers (empty line immediately after request line)
-            if after == "\r\n" {
-                self.status = RequestState::Done;
+                // Check if no headers (empty line immediately after request line)
+                if after == "\r\n" {
+                    self.status = RequestState::Done;
+                }
+
+                Ok(bytes_parsed)
             }
+            RequestState::ParsingHeaders => {
+                // Parse headers
+                let (bytes_parsed, done) = self.headers.parse(data)?;
 
-            Ok(bytes_parsed)
-        } else {
-            // Parse headers
-            let (bytes_parsed, done) = self.headers.parse(data)?;
+                if done {
+                    self.status = RequestState::Done;
+                }
 
-            if done {
-                self.status = RequestState::Done;
+                Ok(bytes_parsed)
             }
-
-            Ok(bytes_parsed)
+            RequestState::Done => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "request state set to Done",
+            )),
         }
     }
 }
@@ -177,6 +186,7 @@ pub struct RequestLine {
 #[derive(Debug)]
 pub enum RequestState {
     Initialized,
+    ParsingHeaders,
     Done,
 }
 

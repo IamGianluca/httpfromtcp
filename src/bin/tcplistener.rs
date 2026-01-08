@@ -21,7 +21,7 @@ fn main() -> io::Result<()> {
                 request.request_line.request_target,
                 request.request_line.http_version,
             ),
-            RequestState::Initialized => continue,
+            RequestState::Initialized | RequestState::ParsingHeaders => continue,
         }
 
         println!("Connection closed.");
