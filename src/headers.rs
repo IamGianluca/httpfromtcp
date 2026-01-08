@@ -274,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn test_field_with_multiple_values() {
+    fn test_duplicate_headers() {
         // Given
         let mut headers = Headers::new();
         let data1 = "Set-Person: lane-loves-go\r\n";

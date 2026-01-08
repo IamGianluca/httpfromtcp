@@ -487,4 +487,104 @@ mod tests {
         // Then
         assert!(r.is_err());
     }
+
+    #[test]
+    fn test_request_with_no_headers() {
+        // Tests the "Empty Headers" scenario explicitly
+        // Given
+        let data = "GET / HTTP/1.1\r\n\r\n";
+        let reader = BufReader::new(data.as_bytes());
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(r.request_line.method, "GET");
+        assert_eq!(r.headers.inner.len(), 0); // No headers
+    }
+
+    #[test]
+    fn test_request_missing_end_of_headers() {
+        // Tests "Missing End of Headers" - request never sends final \r\n\r\n
+        // Given
+        let data = "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl\r\n";
+        let reader = BufReader::new(data.as_bytes());
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_err()); // Should fail because headers never terminate
+    }
+
+    #[test]
+    fn test_request_with_very_long_header_value() {
+        // Edge case: header with very long value
+        // Given
+        let long_value = "a".repeat(1000);
+        let data = format!("GET / HTTP/1.1\r\nX-Long-Header: {}\r\n\r\n", long_value);
+        let reader = BufReader::new(data.as_bytes());
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(r.headers.get("x-long-header"), Some(&long_value));
+    }
+
+    #[test]
+    fn test_request_with_duplicate_headers_integration() {
+        // Tests "Duplicate Headers" at request level (already covered in headers.rs)
+        // Given
+        let data = "GET / HTTP/1.1\r\nSet-Cookie: session=abc\r\nSet-Cookie: token=xyz\r\n\r\n";
+        let reader = BufReader::new(data.as_bytes());
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(
+            r.headers.get("set-cookie"),
+            Some(&"session=abc, token=xyz".to_string())
+        );
+    }
+
+    #[test]
+    fn test_request_with_empty_header_value() {
+        // Edge case: header with empty value
+        // Given
+        let data = "GET / HTTP/1.1\r\nX-Empty:\r\n\r\n";
+        let reader = BufReader::new(data.as_bytes());
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(r.headers.get("x-empty"), Some(&"".to_string()));
+    }
+
+    #[test]
+    fn test_request_header_with_only_spaces_in_value() {
+        // Edge case: header value is only whitespace
+        // Given
+        let data = "GET / HTTP/1.1\r\nX-Spaces:     \r\n\r\n";
+        let reader = BufReader::new(data.as_bytes());
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        // trim() is applied, so should be empty string
+        assert_eq!(r.headers.get("x-spaces"), Some(&"".to_string()));
+    }
 }
