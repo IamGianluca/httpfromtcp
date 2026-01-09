@@ -15,12 +15,18 @@ fn main() -> io::Result<()> {
         let request = request_from_reader(reader)?;
 
         match request.status {
-            RequestState::Done => println!(
-                "Request line:\n- Method: {}\n-Target: {}\n-Version: {}",
-                request.request_line.method,
-                request.request_line.request_target,
-                request.request_line.http_version,
-            ),
+            RequestState::Done => {
+                println!(
+                    "Request line:\n- Method: {}\n- Target: {}\n- Version: {}",
+                    request.request_line.method,
+                    request.request_line.request_target,
+                    request.request_line.http_version,
+                );
+                println!("Headers:");
+                for (key, value) in &request.headers.inner {
+                    println!("- {}: {}", key, value);
+                }
+            }
             RequestState::Initialized | RequestState::ParsingHeaders => continue,
         }
 
