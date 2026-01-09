@@ -28,7 +28,9 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         }
 
         match request.status {
-            RequestState::Initialized | RequestState::ParsingHeaders => {
+            RequestState::Initialized
+            | RequestState::ParsingHeaders
+            | RequestState::ParsingBody => {
                 // If no more data available, exit
                 if bytes_read == 0 {
                     break;
@@ -41,10 +43,12 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
 
     match request.status {
         RequestState::Done => Ok(request),
-        RequestState::Initialized | RequestState::ParsingHeaders => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "could not finish parsing request".to_string(),
-        )),
+        RequestState::Initialized | RequestState::ParsingHeaders | RequestState::ParsingBody => {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not finish parsing request".to_string(),
+            ))
+        }
     }
 }
 
@@ -53,6 +57,7 @@ pub struct Request {
     // A parser
     pub request_line: RequestLine,
     pub headers: Headers,
+    pub body: Vec<u8>,
     pub status: RequestState,
 }
 
@@ -71,6 +76,7 @@ impl Request {
                 method: String::new(),
             },
             headers: Headers::new(),
+            body: Vec::<u8>::new(),
             status: RequestState::Initialized,
         }
     }
@@ -83,13 +89,17 @@ impl Request {
         // an error if it encountered one.
         let data_str = String::from_utf8_lossy(data);
 
-        // Check if we have a complete line.
-        let Some((before, _after)) = data_str.split_once("\r\n") else {
-            return Ok(0); // No CRLF found, need more data
-        };
+        // // Check if we have a complete line.
+        // let Some((before, _after)) = data_str.split_once("\r\n") else {
+        //     return Ok(0); // No CRLF found, need more data
+        // };
 
         match self.status {
             RequestState::Initialized => {
+                // Check if we have a complete line.
+                let Some((before, _after)) = data_str.split_once("\r\n") else {
+                    return Ok(0); // No CRLF found, need more data
+                };
                 // Parse request line
                 let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
                 self.request_line = request_line;
@@ -103,10 +113,44 @@ impl Request {
                 let (bytes_parsed, done) = self.headers.parse(data)?;
 
                 if done {
-                    self.status = RequestState::Done;
+                    let content_length = self
+                        .headers
+                        .get("content-length")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(0);
+
+                    if content_length > 0 {
+                        self.status = RequestState::ParsingBody;
+                    } else {
+                        self.status = RequestState::Done;
+                    }
                 }
 
                 Ok(bytes_parsed)
+            }
+            RequestState::ParsingBody => {
+                // Get the expected content length
+                let content_length = self
+                    .headers
+                    .get("content-length")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0);
+
+                // Calculate how many bytes we still need
+                let bytes_needed = content_length.saturating_sub(self.body.len());
+
+                // Take only what we need from the available data
+                let bytes_to_consume = std::cmp::min(bytes_needed, data.len());
+
+                // Append to body
+                self.body.extend_from_slice(&data[..bytes_to_consume]);
+
+                // Check if we've read the entire body
+                if self.body.len() >= content_length {
+                    self.status = RequestState::Done;
+                }
+
+                Ok(bytes_to_consume)
             }
             RequestState::Done => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -182,6 +226,7 @@ pub struct RequestLine {
 pub enum RequestState {
     Initialized,
     ParsingHeaders,
+    ParsingBody,
     Done,
 }
 
@@ -586,5 +631,45 @@ mod tests {
         let r = r.unwrap();
         // trim() is applied, so should be empty string
         assert_eq!(r.headers.get("x-spaces"), Some(&"".to_string()));
+    }
+
+    #[test]
+    fn test_standard_body() {
+        // Given
+        let data = "POST /submit HTTP/1.1\r\n\
+Host: localhost:42069\r\n\
+Content-Length: 13\r\n\
+\r\n\
+hello world!\n"
+            .to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!("hello world!\n", String::from_utf8_lossy(&r.body));
+    }
+
+    #[test]
+    fn test_body_shorter_than_reported_content_length() {
+        // Given
+        let data = "POST /submit HTTP/1.1\r\n\
+Host: localhost:42069\r\n\
+Content-Length: 20\r\n\
+\r\n\
+partial content"
+            .to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_err()); // Should fail because body is shorter than Content-Length
     }
 }

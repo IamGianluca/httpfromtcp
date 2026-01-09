@@ -27,7 +27,9 @@ fn main() -> io::Result<()> {
                     println!("- {}: {}", key, value);
                 }
             }
-            RequestState::Initialized | RequestState::ParsingHeaders => continue,
+            RequestState::Initialized
+            | RequestState::ParsingHeaders
+            | RequestState::ParsingBody => continue,
         }
 
         println!("Connection closed.");
