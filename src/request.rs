@@ -89,11 +89,6 @@ impl Request {
         // an error if it encountered one.
         let data_str = String::from_utf8_lossy(data);
 
-        // // Check if we have a complete line.
-        // let Some((before, _after)) = data_str.split_once("\r\n") else {
-        //     return Ok(0); // No CRLF found, need more data
-        // };
-
         match self.status {
             RequestState::Initialized => {
                 // Check if we have a complete line.
