@@ -141,8 +141,16 @@ impl Request {
                 self.body.extend_from_slice(&data[..bytes_to_consume]);
 
                 // Check if we've read the entire body
-                if self.body.len() >= content_length {
+                if self.body.len() == content_length {
                     self.status = RequestState::Done;
+
+                    // Check if more data in the buffer
+                    if data.len() > bytes_to_consume {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "body longer than provided content length",
+                        ));
+                    }
                 }
 
                 Ok(bytes_to_consume)
@@ -666,5 +674,24 @@ partial content"
 
         // Then
         assert!(r.is_err()); // Should fail because body is shorter than Content-Length
+    }
+
+    #[test]
+    fn test_body_longer_than_reported_content_length() {
+        // Given
+        let data = "POST /submit HTTP/1.1\r\n\
+Host: localhost:42069\r\n\
+Content-Length: 1\r\n\
+\r\n\
+content exceeding provided content length\n"
+            .to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_err()); // Should fail because body is longer than Content-Length
     }
 }
