@@ -9,12 +9,19 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
     let mut buffer = vec![0_u8; chunk_size];
 
     loop {
+        // Streaming parser pattern: This loop alternates between two operations:
+        // 1. Growing the buffer when full (bytes_buffered == buffer.len())
+        // 2. Draining parsed data to free space (see buffer.drain below)
+        // This ensures we always have space to read more data while keeping
+        // memory usage bounded by only buffering unparsed data.
+
         // Grow buffer if needed
         if bytes_buffered >= buffer.len() {
             buffer.resize(buffer.len() + chunk_size, 0);
         }
 
-        // Read from reader
+        // Read from reader. Note that reader.read() will fill UP TO the remaining
+        // buffer space (never exceeding buffer.len()).
         let bytes_read = reader.read(&mut buffer[bytes_buffered..])?;
         bytes_buffered += bytes_read;
 
