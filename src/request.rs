@@ -34,6 +34,8 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
             bytes_buffered -= bytes_parsed;
         }
 
+        // Exit the loop when parsing is complete (status == Done).
+        // Note that request status is updated by request.parse() above.
         match request.status {
             RequestState::Initialized
             | RequestState::ParsingHeaders
