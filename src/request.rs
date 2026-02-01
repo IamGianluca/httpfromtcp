@@ -26,8 +26,8 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         bytes_buffered += bytes_read;
 
         // Parse data in the buffer. If the parser was able to parse some data,
-        // pop first bytes_parsed elements from the buffer in order to avoid
-        // unnecessary memory consumption
+        // pop first bytes_parsed elements from the buffer. In this way, we can
+        // reduce overall buffer size and memory consumption.
         let bytes_parsed = request.parse(&buffer[..bytes_buffered])?;
         if bytes_parsed > 0 {
             buffer.drain(..bytes_parsed); // Remove parsed bytes
