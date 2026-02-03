@@ -703,4 +703,68 @@ content exceeding provided content length\n"
         // Then
         assert!(r.is_err()); // Should fail because body is longer than Content-Length
     }
+
+    #[test]
+    fn test_empty_body_with_zero_content_length() {
+        // Given
+        let data = "POST /submit HTTP/1.1\r\n\
+Host: localhost:42069\r\n\
+Content-Length: 0\r\n\
+\r\n"
+            .to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(0, r.body.len());
+        assert_eq!("", String::from_utf8_lossy(&r.body));
+    }
+
+    #[test]
+    fn test_empty_body_with_no_content_length() {
+        // Given
+        let data = "GET / HTTP/1.1\r\n\
+Host: localhost:42069\r\n\
+\r\n"
+            .to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        assert_eq!(0, r.body.len());
+        assert_eq!("", String::from_utf8_lossy(&r.body));
+    }
+
+    #[test]
+    fn test_no_content_length_but_body_exists() {
+        // Per the assignment: if a body exists, but there is no Content-Length header,
+        // we assume no body. We should successfully parse the request, but ignore the body.
+        // Given
+        let data = "POST /submit HTTP/1.1\r\n\
+Host: localhost:42069\r\n\
+\r\n\
+unexpected body data"
+            .to_string();
+        let chunk_reader = ChunkReader::new(data, 3);
+        let reader = BufReader::new(chunk_reader);
+
+        // When
+        let r = request_from_reader(reader);
+
+        // Then
+        assert!(r.is_ok(), "Expected Ok, got Err: {:?}", r.err());
+        let r = r.unwrap();
+        // Body should be empty because no Content-Length header
+        assert_eq!(0, r.body.len());
+    }
 }
