@@ -26,6 +26,7 @@ fn main() -> io::Result<()> {
                 for (key, value) in &request.headers.inner {
                     println!("- {}: {}", key, value);
                 }
+                println!("Body:\n{}", String::from_utf8_lossy(&request.body));
             }
             RequestState::Initialized
             | RequestState::ParsingHeaders
