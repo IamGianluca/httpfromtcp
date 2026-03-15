@@ -84,7 +84,7 @@ mod test {
     use crate::server::serve;
 
     #[test]
-    fn test_something() {
+    fn test_serve_returns_server_open_connection() {
         // Given
         let port = 8888_u16;
 
@@ -92,6 +92,6 @@ mod test {
         let result = serve(port).unwrap();
 
         // Then
-        assert_eq!(result.is_closed.load(Ordering::SeqCst), false);
+        assert!(!result.is_closed.load(Ordering::SeqCst));
     }
 }
