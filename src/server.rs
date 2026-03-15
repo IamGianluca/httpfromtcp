@@ -1,6 +1,6 @@
 use std::{
-    io::{self, BufReader},
-    net::TcpListener,
+    io::{self, BufReader, BufWriter, Write},
+    net::{TcpListener, TcpStream},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -15,6 +15,18 @@ pub struct Server {
     listener: Option<Arc<TcpListener>>,
     pub is_closed: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>, // server state, background thread
+}
+
+impl Server {
+    pub fn handle(conn: TcpStream) {
+        println!("Handling connection...");
+        let mut buf = BufWriter::new(conn);
+        let _ = buf
+            .write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n",)
+            .unwrap();
+        buf.flush().unwrap();
+    }
 }
 
 impl Drop for Server {
@@ -34,6 +46,7 @@ impl Drop for Server {
         }
     }
 }
+
 pub fn serve(port: u16) -> io::Result<Server> {
     let port = format!("127.0.0.1:{port}");
     let listener = Arc::new(TcpListener::bind(&port)?);
@@ -65,6 +78,7 @@ pub fn serve(port: u16) -> io::Result<Server> {
             thread::spawn(move || {
                 let reader = BufReader::new(&s);
                 let _request = request_from_reader(reader).unwrap();
+                Server::handle(s)
             });
         }
     });
