@@ -93,12 +93,15 @@ pub fn serve(port: u16) -> io::Result<Server> {
 #[cfg(test)]
 mod test {
     use std::{
-        io::Read,
+        io::{BufReader, Read, Write},
         net::{TcpListener, TcpStream},
         sync::atomic::Ordering,
     };
 
-    use crate::server::{Server, serve};
+    use crate::{
+        request::request_from_reader,
+        server::{Server, serve},
+    };
 
     #[test]
     fn test_serve_returns_server_open_connection() {
@@ -122,6 +125,61 @@ mod test {
         let (server_stream, _addr) = listener.accept().unwrap();
 
         // When
+        Server::handle(server_stream);
+
+        // Then
+        let mut response = String::new();
+        client_stream.read_to_string(&mut response).unwrap();
+        assert_eq!(
+            response,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n"
+        );
+    }
+
+    #[test]
+    fn test_integration_between_request_from_reader_to_server_get_request() {
+        // Given
+        let addr = "127.0.0.1:1112".to_string();
+        let listener = TcpListener::bind(&addr).unwrap();
+
+        let mut client_stream = TcpStream::connect(&addr).unwrap();
+        let (server_stream, _addr) = listener.accept().unwrap();
+
+        let reader = BufReader::new(&server_stream);
+        client_stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n").unwrap();
+
+        // When
+        // let _request = request_from_reader(reader).unwrap();
+        let _request = request_from_reader(reader).unwrap();
+        Server::handle(server_stream);
+
+        // Then
+        let mut response = String::new();
+        client_stream.read_to_string(&mut response).unwrap();
+        assert_eq!(
+            response,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n"
+        );
+    }
+
+    #[test]
+    fn test_integration_between_request_from_reader_to_server_post_request() {
+        // Given
+        let addr = "127.0.0.1:1113".to_string();
+        let listener = TcpListener::bind(&addr).unwrap();
+
+        let mut client_stream = TcpStream::connect(&addr).unwrap();
+        let (server_stream, _addr) = listener.accept().unwrap();
+
+        // ❯ curl -X POST http://localhost:42069/coffee \
+        // -H 'Content-Type: application/json' \
+        // -d '{"type": "dark mode", "size": "medium"}'
+        let reader = BufReader::new(&server_stream);
+        client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
+
+        // When
+        // let _request = request_from_reader(reader).unwrap();
+        let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
         // Then

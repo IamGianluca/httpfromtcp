@@ -15,38 +15,34 @@ pub fn request_from_reader<R: BufRead>(mut reader: R) -> Result<Request, io::Err
         // This ensures we always have space to read more data while keeping
         // memory usage bounded by only buffering unparsed data.
 
-        // Grow buffer if needed
-        if bytes_buffered >= buffer.len() {
-            buffer.resize(buffer.len() + chunk_size, 0);
+        // Check if Done
+        if request.status == RequestState::Done {
+            break;
         }
-
-        // Read from reader. Note that reader.read() will fill UP TO the remaining
-        // buffer space (never exceeding buffer.len()).
-        let bytes_read = reader.read(&mut buffer[bytes_buffered..])?;
-        bytes_buffered += bytes_read;
 
         // Parse data in the buffer. If the parser was able to parse some data,
         // pop first bytes_parsed elements from the buffer. In this way, we can
         // reduce overall buffer size and memory consumption.
         let bytes_parsed = request.parse(&buffer[..bytes_buffered])?;
+
         if bytes_parsed > 0 {
             buffer.drain(..bytes_parsed); // Remove parsed bytes
             bytes_buffered -= bytes_parsed;
+            continue;
         }
 
-        // Exit the loop when parsing is complete (status == Done).
-        // Note that request status is updated by request.parse() above.
-        match request.status {
-            RequestState::Initialized
-            | RequestState::ParsingHeaders
-            | RequestState::ParsingBody => {
-                // If no more data available, exit
-                if bytes_read == 0 {
-                    break;
-                }
-                continue;
-            }
-            RequestState::Done => break,
+        // Grow buffer if needed
+        if bytes_buffered >= buffer.len() {
+            buffer.resize(buffer.len() + chunk_size, 0);
+        }
+
+        // Read from reader. Note that reader.read() will fill UP TO the
+        // remaining buffer space (never exceeding buffer.len()).
+        let bytes_read = reader.read(&mut buffer[bytes_buffered..])?;
+        bytes_buffered += bytes_read;
+
+        if bytes_read == 0 {
+            break;
         }
     }
 
@@ -100,13 +96,15 @@ impl Request {
 
         match self.status {
             RequestState::Initialized => {
-                // Check if we have a complete line.
+                // Check if we have a complete line
                 let Some((before, _after)) = data_str.split_once("\r\n") else {
                     return Ok(0); // No CRLF found, need more data
                 };
+
                 // Parse request line
                 let (request_line, bytes_parsed) = parse_request_line(before.to_string())?;
                 self.request_line = request_line;
+
                 // Flag that request line has been parsed and we can now expect to parse the headers
                 self.status = RequestState::ParsingHeaders;
 
@@ -234,7 +232,7 @@ pub struct RequestLine {
 // be an Enum, with possible states <Initiatized, Done(RequestLine)>. This would
 // avoid inconsistent states where state=Initiatized but request_line is
 // assigned to a valid RequestLine object, etc.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum RequestState {
     Initialized,
     ParsingHeaders,
