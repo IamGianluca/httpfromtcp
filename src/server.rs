@@ -19,7 +19,6 @@ pub struct Server {
 
 impl Server {
     pub fn handle(conn: TcpStream) {
-        println!("Handling connection...");
         let mut buf = BufWriter::new(conn);
         let _ = buf
             .write(
@@ -59,7 +58,7 @@ pub fn serve(port: u16) -> io::Result<Server> {
         for stream in listener_clone.incoming() {
             println!("Connection accepted.");
 
-            let s = match stream {
+            let server_stream = match stream {
                 Ok(v) => {
                     // The throwaway connection opened by drop() will appear as
                     // a successful connection here. Check is_closed and exit
@@ -76,9 +75,9 @@ pub fn serve(port: u16) -> io::Result<Server> {
             };
 
             thread::spawn(move || {
-                let reader = BufReader::new(&s);
+                let reader = BufReader::new(&server_stream);
                 let _request = request_from_reader(reader).unwrap();
-                Server::handle(s)
+                Server::handle(server_stream)
             });
         }
     });
@@ -93,9 +92,13 @@ pub fn serve(port: u16) -> io::Result<Server> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::atomic::Ordering;
+    use std::{
+        io::Read,
+        net::{TcpListener, TcpStream},
+        sync::atomic::Ordering,
+    };
 
-    use crate::server::serve;
+    use crate::server::{Server, serve};
 
     #[test]
     fn test_serve_returns_server_open_connection() {
@@ -107,5 +110,26 @@ mod test {
 
         // Then
         assert!(!result.is_closed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_server_handle_associated_function_hardcoded_response() {
+        // Given
+        let addr = "127.0.0.1:1942".to_string();
+        let listener = TcpListener::bind(&addr).unwrap();
+
+        let mut client_stream = TcpStream::connect(&addr).unwrap();
+        let (server_stream, _addr) = listener.accept().unwrap();
+
+        // When
+        Server::handle(server_stream);
+
+        // Then
+        let mut response = String::new();
+        client_stream.read_to_string(&mut response).unwrap();
+        assert_eq!(
+            response,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n"
+        );
     }
 }
