@@ -136,6 +136,13 @@ mod test {
         );
     }
 
+    // The following integration tests are important because, differently from
+    // the tests in request.rs, we are now using a live TcpStream. A TcpStream
+    // behaves differently from a buffer/byte slice. For instance, when a byte
+    // slice is exhausted, read() returns 0 (EOF) immediately. A TcpStream
+    // never returns 0 until the connection closes, which is a fundamentally
+    // different behavior.
+
     #[test]
     fn test_integration_between_request_from_reader_to_server_get_request() {
         // Given
@@ -149,7 +156,6 @@ mod test {
         client_stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n").unwrap();
 
         // When
-        // let _request = request_from_reader(reader).unwrap();
         let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
@@ -178,7 +184,6 @@ mod test {
         client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        // let _request = request_from_reader(reader).unwrap();
         let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
