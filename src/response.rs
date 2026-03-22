@@ -4,25 +4,23 @@ use crate::headers::Headers;
 
 #[derive(Debug, Clone)]
 pub enum StatusCode {
-    Okay = 200,
-    ClientError = 400,
-    ServerError = 500,
+    Ok,          // 200
+    ClientError, // 400
+    ServerError, // 500
 }
 
 pub fn write_status_line(w: &mut impl Write, status_code: StatusCode) -> io::Result<()> {
     // Note: In most cases, w will be a TcpStream ― which implements the Write trait
 
     // Write status code to TcpStream
-    let _ = match status_code {
-        StatusCode::Okay => w.write_all(b"HTTP/1.1 200 OK\r\n"),
+    match status_code {
+        StatusCode::Ok => w.write_all(b"HTTP/1.1 200 OK\r\n"),
         StatusCode::ClientError => w.write_all(b"HTTP/1.1 400 Bad Request\r\n"),
         StatusCode::ServerError => w.write_all(b"HTTP/1.1 500 Internal Server Error\r\n"),
-    };
-
-    Ok(())
+    }
 }
 
-pub fn get_default_headers(content_len: u8) -> Headers {
+pub fn get_default_headers(content_len: usize) -> Headers {
     let mut headers = Headers::new();
     headers.insert("Content-Length".to_string(), content_len.to_string());
     headers.insert("Connection".to_string(), "close".to_string());
@@ -36,7 +34,7 @@ mod test {
 
     use crate::response::{StatusCode, get_default_headers, write_status_line};
 
-    #[test_case(StatusCode::Okay, b"HTTP/1.1 200 OK\r\n")]
+    #[test_case(StatusCode::Ok, b"HTTP/1.1 200 OK\r\n")]
     #[test_case(StatusCode::ClientError, b"HTTP/1.1 400 Bad Request\r\n")]
     #[test_case(StatusCode::ServerError, b"HTTP/1.1 500 Internal Server Error\r\n")]
     fn test_write_status_line(status_code: StatusCode, expected: &[u8]) {
@@ -53,7 +51,7 @@ mod test {
     #[test]
     fn test_get_default_headers() {
         // Given
-        let content_len = 13_u8;
+        let content_len = 13_usize;
 
         // When
         let headers = get_default_headers(content_len);
