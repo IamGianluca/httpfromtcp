@@ -28,11 +28,21 @@ pub fn get_default_headers(content_len: usize) -> Headers {
     headers
 }
 
+pub fn write_headers(w: &mut impl Write, headers: Headers) -> io::Result<()> {
+    let keys = ["Content-Type", "Content-Length", "Connection"];
+    for key in keys.iter() {
+        if let Some(value) = headers.get(key) {
+            write!(w, "{}: {}\r\n", key, value)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use test_case::test_case;
 
-    use crate::response::{StatusCode, get_default_headers, write_status_line};
+    use crate::response::{StatusCode, get_default_headers, write_headers, write_status_line};
 
     #[test_case(StatusCode::Ok, b"HTTP/1.1 200 OK\r\n")]
     #[test_case(StatusCode::ClientError, b"HTTP/1.1 400 Bad Request\r\n")]
@@ -60,5 +70,21 @@ mod test {
         assert_eq!(headers.get("Content-Length"), Some(&"13".to_string()));
         assert_eq!(headers.get("Connection"), Some(&"close".to_string()));
         assert_eq!(headers.get("Content-Type"), Some(&"text/plain".to_string()));
+    }
+
+    #[test]
+    fn test_() {
+        // Given
+        let mut buf = Vec::new();
+        let headers = get_default_headers(13_usize);
+
+        // When
+        write_headers(&mut buf, headers).unwrap();
+
+        // Then
+        assert_eq!(
+            buf,
+            b"Content-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n"
+        );
     }
 }
