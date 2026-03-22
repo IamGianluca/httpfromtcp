@@ -8,7 +8,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::request::request_from_reader;
+use crate::{headers::Headers, request::request_from_reader, response::write_headers};
 
 pub struct Server {
     port: String,
@@ -20,10 +20,11 @@ pub struct Server {
 impl Server {
     pub fn handle(conn: TcpStream) {
         let mut buf = BufWriter::new(conn);
-        let _ = buf
-            .write(
-                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n",)
-            .unwrap();
+        let mut headers = Headers::new();
+        headers.insert("Content-Type".to_string(), "text/plain".to_string());
+        headers.insert("Content-Length".to_string(), "0".to_string());
+        headers.insert("Connection".to_string(), "close".to_string());
+        let _ = write_headers(&mut buf, headers);
         buf.flush().unwrap();
     }
 }
@@ -132,7 +133,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n"
         );
     }
 
@@ -164,7 +165,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n"
         );
     }
 
@@ -192,7 +193,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n"
         );
     }
 }
