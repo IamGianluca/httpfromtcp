@@ -10,19 +10,15 @@ pub enum StatusCode {
 }
 
 pub fn write_status_line(w: &mut impl Write, status_code: StatusCode) -> io::Result<()> {
-    // In most cases, w will be a TcpStream ― which implements the Write trait
-
-    // Generate a status line based on the StatusCode.
-    // Note: Storing the status line to a variable is not very efficient. We
-    // could simply write to the TcpStream and save the allocation
-    let out = match status_code {
-        StatusCode::Okay => "HTTP/1.1 200 OK\r\n",
-        StatusCode::ClientError => "HTTP/1.1 400 Bad Request\r\n",
-        StatusCode::ServerError => "HTTP/1.1 500 Internal Server Error\r\n",
-    };
+    // Note: In most cases, w will be a TcpStream ― which implements the Write trait
 
     // Write status code to TcpStream
-    w.write_all(out.as_bytes())?;
+    let _ = match status_code {
+        StatusCode::Okay => w.write_all(b"HTTP/1.1 200 OK\r\n"),
+        StatusCode::ClientError => w.write_all(b"HTTP/1.1 400 Bad Request\r\n"),
+        StatusCode::ServerError => w.write_all(b"HTTP/1.1 500 Internal Server Error\r\n"),
+    };
+
     Ok(())
 }
 
