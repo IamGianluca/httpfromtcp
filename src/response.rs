@@ -29,6 +29,7 @@ pub fn get_default_headers(content_len: usize) -> Headers {
 }
 
 pub fn write_headers(w: &mut impl Write, headers: Headers) -> io::Result<()> {
+    write_status_line(w, StatusCode::Ok)?;
     let keys = ["Content-Type", "Content-Length", "Connection"];
     for key in keys.iter() {
         if let Some(value) = headers.get(key) {
@@ -84,7 +85,7 @@ mod test {
         // Then
         assert_eq!(
             buf,
-            b"Content-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n"
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n"
         );
     }
 }
