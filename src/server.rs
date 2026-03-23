@@ -19,15 +19,18 @@ pub struct Server {
 
 impl Server {
     pub fn handle(conn: TcpStream) {
-        let mut buf = BufWriter::new(conn);
+        let reader = BufReader::new(&conn);
+        let _request = request_from_reader(reader).unwrap();
+
+        let mut writer = BufWriter::new(conn);
         let mut headers = Headers::new();
 
         headers.insert("Content-Type".to_string(), "text/plain".to_string());
         headers.insert("Content-Length".to_string(), "0".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
 
-        let _ = write_headers(&mut buf, headers);
-        buf.flush().unwrap();
+        let _ = write_headers(&mut writer, headers);
+        writer.flush().unwrap();
     }
 }
 
@@ -59,7 +62,7 @@ pub fn serve(port: u16) -> io::Result<Server> {
     let listener_clone = Arc::clone(&listener);
     let is_closed_clone = Arc::clone(&is_closed);
 
-    // Process each request in its separate thread
+    // Process each request in a separate thread
     let handle = thread::spawn(move || {
         for stream in listener_clone.incoming() {
             println!("Connection accepted.");
@@ -81,12 +84,7 @@ pub fn serve(port: u16) -> io::Result<Server> {
             };
 
             thread::spawn(move || {
-                let reader = BufReader::new(&server_stream);
-                let _request = request_from_reader(reader).unwrap();
-                // NOTE: at this stage, Server::handle() does not know whether parsing
-                // completed successfully. It responds with a 200 status code irrespectively
-                // of that.
-                Server::handle(server_stream)
+                Server::handle(server_stream);
             });
         }
     });
@@ -102,15 +100,12 @@ pub fn serve(port: u16) -> io::Result<Server> {
 #[cfg(test)]
 mod test {
     use std::{
-        io::{BufReader, Read, Write},
+        io::{Read, Write},
         net::{TcpListener, TcpStream},
         sync::atomic::Ordering,
     };
 
-    use crate::{
-        request::request_from_reader,
-        server::{Server, serve},
-    };
+    use crate::server::{Server, serve};
 
     #[test]
     fn test_serve_returns_server_open_connection() {
@@ -122,27 +117,6 @@ mod test {
 
         // Then
         assert!(!result.is_closed.load(Ordering::SeqCst));
-    }
-
-    #[test]
-    fn test_server_handle_associated_function_hardcoded_response() {
-        // Given
-        let addr = "127.0.0.1:1942".to_string();
-        let listener = TcpListener::bind(&addr).unwrap();
-
-        let mut client_stream = TcpStream::connect(&addr).unwrap();
-        let (server_stream, _addr) = listener.accept().unwrap();
-
-        // When
-        Server::handle(server_stream);
-
-        // Then
-        let mut response = String::new();
-        client_stream.read_to_string(&mut response).unwrap();
-        assert_eq!(
-            response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n"
-        );
     }
 
     // The following integration tests are important because, differently from
@@ -161,11 +135,11 @@ mod test {
         let mut client_stream = TcpStream::connect(&addr).unwrap();
         let (server_stream, _addr) = listener.accept().unwrap();
 
-        let reader = BufReader::new(&server_stream);
+        // let reader = BufReader::new(&server_stream);
         client_stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n").unwrap();
 
         // When
-        let _request = request_from_reader(reader).unwrap();
+        // let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
         // Then
@@ -189,11 +163,11 @@ mod test {
         // ❯ curl -X POST http://localhost:42069/coffee \
         // -H 'Content-Type: application/json' \
         // -d '{"type": "dark mode", "size": "medium"}'
-        let reader = BufReader::new(&server_stream);
+        // let reader = BufReader::new(&server_stream);
         client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        let _request = request_from_reader(reader).unwrap();
+        // let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
         // Then
