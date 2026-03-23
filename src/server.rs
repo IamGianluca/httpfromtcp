@@ -21,9 +21,11 @@ impl Server {
     pub fn handle(conn: TcpStream) {
         let mut buf = BufWriter::new(conn);
         let mut headers = Headers::new();
+
         headers.insert("Content-Type".to_string(), "text/plain".to_string());
         headers.insert("Content-Length".to_string(), "0".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
+
         let _ = write_headers(&mut buf, headers);
         buf.flush().unwrap();
     }
@@ -52,9 +54,12 @@ pub fn serve(port: u16) -> io::Result<Server> {
     let listener = Arc::new(TcpListener::bind(&port)?);
     let is_closed = Arc::new(AtomicBool::new(false));
 
+    // Create shallow copies to use these objects both in the loop and later in the
+    // Server struct. Arc allows shared ownership across threads via reference counting.
     let listener_clone = Arc::clone(&listener);
     let is_closed_clone = Arc::clone(&is_closed);
 
+    // Process each request in its separate thread
     let handle = thread::spawn(move || {
         for stream in listener_clone.incoming() {
             println!("Connection accepted.");
@@ -78,6 +83,9 @@ pub fn serve(port: u16) -> io::Result<Server> {
             thread::spawn(move || {
                 let reader = BufReader::new(&server_stream);
                 let _request = request_from_reader(reader).unwrap();
+                // NOTE: at this stage, Server::handle() does not know whether parsing
+                // completed successfully. It responds with a 200 status code irrespectively
+                // of that.
                 Server::handle(server_stream)
             });
         }
