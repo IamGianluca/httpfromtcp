@@ -28,8 +28,12 @@ pub fn get_default_headers(content_len: usize) -> Headers {
     headers
 }
 
-pub fn write_headers(w: &mut impl Write, headers: Headers) -> io::Result<()> {
-    write_status_line(w, StatusCode::Ok)?;
+pub fn write_headers(
+    w: &mut impl Write,
+    status_code: StatusCode,
+    headers: Headers,
+) -> io::Result<()> {
+    write_status_line(w, status_code)?;
     let keys = ["Content-Type", "Content-Length", "Connection"];
     for key in keys.iter() {
         if let Some(value) = headers.get(key) {
@@ -80,7 +84,7 @@ mod test {
         let headers = get_default_headers(13_usize);
 
         // When
-        write_headers(&mut buf, headers).unwrap();
+        write_headers(&mut buf, StatusCode::Ok, headers).unwrap();
 
         // Then
         assert_eq!(

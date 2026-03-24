@@ -11,7 +11,7 @@ use std::{
 use crate::{
     headers::Headers,
     request::{Request, request_from_reader},
-    response::write_headers,
+    response::{StatusCode, write_headers},
 };
 
 pub struct Server {
@@ -25,43 +25,52 @@ impl Server {
     pub fn handle(conn: TcpStream) {
         // Parse request
         let reader = BufReader::new(&conn);
-        let _request = request_from_reader(reader).unwrap();
+        let request = request_from_reader(reader).unwrap();
 
         let mut writer = BufWriter::new(conn);
 
-        // Write response headers
+        // Prepare response headers
         let mut headers = Headers::new();
         headers.insert("Content-Type".to_string(), "text/plain".to_string());
         headers.insert("Content-Length".to_string(), "0".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
-        let _ = write_headers(&mut writer, headers);
-        write!(writer, "\r\n").unwrap(); // newline to signal headers are completed
 
-        // Write response body
-        let _ = handler(&mut writer, _request);
+        // Prepare body
+        let result = handler(request);
+
+        // Write response
+        match result {
+            Ok(_) => {
+                let _ = write_headers(&mut writer, StatusCode::Ok, headers);
+                write!(writer, "\r\n").unwrap();
+                writeln!(writer, "All good, frfr").unwrap();
+            }
+            Err(e) => {
+                let _ = write_headers(&mut writer, e.error_code, headers);
+                write!(writer, "\r\n").unwrap();
+                writeln!(writer, "{}", e.message).unwrap();
+            }
+        };
         writer.flush().unwrap();
     }
 }
 
 struct RequestError {
-    error_code: String,
+    error_code: StatusCode,
     message: String,
 }
 
-fn handler(w: &mut impl Write, req: Request) -> Result<(), RequestError> {
+fn handler(req: Request) -> Result<(), RequestError> {
     match req.request_line.request_target.as_str() {
-        "/your_problem" => Err(RequestError {
-            error_code: "400".to_string(),
-            message: "Your problem is not my problem\n".to_string(),
+        "/yourproblem" => Err(RequestError {
+            error_code: StatusCode::ClientError,
+            message: "Your problem is not my problem".to_string(),
         }),
-        "/my_problem" => Err(RequestError {
-            error_code: "500".to_string(),
-            message: "Woopsie, my bad\n".to_string(),
+        "/myproblem" => Err(RequestError {
+            error_code: StatusCode::ServerError,
+            message: "Woopsie, my bad".to_string(),
         }),
-        _ => {
-            let _ = writeln!(w, "All good, frfr");
-            Ok(())
-        }
+        _ => Ok(()),
     }
 }
 
@@ -189,9 +198,6 @@ mod test {
         let mut client_stream = TcpStream::connect(&addr).unwrap();
         let (server_stream, _addr) = listener.accept().unwrap();
 
-        // ❯ curl -X POST http://localhost:42069/coffee \
-        // -H 'Content-Type: application/json' \
-        // -d '{"type": "dark mode", "size": "medium"}'
         client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
@@ -203,6 +209,52 @@ mod test {
         assert_eq!(
             response,
             "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nAll good, frfr\n"
+        );
+    }
+
+    #[test]
+    fn test_error_400() {
+        // Given
+        let addr = "127.0.0.1:8881".to_string();
+        let listener = TcpListener::bind(&addr).unwrap();
+
+        let mut client_stream = TcpStream::connect(&addr).unwrap();
+        let (server_stream, _addr) = listener.accept().unwrap();
+
+        client_stream.write_all(b"POST /yourproblem HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
+
+        // When
+        Server::handle(server_stream);
+
+        // Then
+        let mut response = String::new();
+        client_stream.read_to_string(&mut response).unwrap();
+        assert_eq!(
+            response,
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nYour problem is not my problem\n"
+        );
+    }
+
+    #[test]
+    fn test_error_500() {
+        // Given
+        let addr = "127.0.0.1:8210".to_string();
+        let listener = TcpListener::bind(&addr).unwrap();
+
+        let mut client_stream = TcpStream::connect(&addr).unwrap();
+        let (server_stream, _addr) = listener.accept().unwrap();
+
+        client_stream.write_all(b"POST /myproblem HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
+
+        // When
+        Server::handle(server_stream);
+
+        // Then
+        let mut response = String::new();
+        client_stream.read_to_string(&mut response).unwrap();
+        assert_eq!(
+            response,
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nWoopsie, my bad\n"
         );
     }
 }
