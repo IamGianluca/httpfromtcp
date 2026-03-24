@@ -8,21 +8,31 @@ This is a solution to the course ["Learn the HTTP Protocol in Go"](https://www.b
 
 - HTTP/1.1 request line parsing
 - HTTP header parsing (case-insensitive, validates formatting)
+- HTTP body parsing
 - Streaming parser (handles chunked reads)
 - Validates HTTP methods (GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH)
-- TCP listener on `127.0.0.1:42069`
-- Comprehensive test suite 
+- HTTP response writing (status line, headers, body)
+- Pluggable handler function for custom request handling
+- TCP server on `127.0.0.1:42069` with graceful shutdown
+- Comprehensive test suite
 
 ## Usage
 
-### Run the TCP listener:
+### Run the HTTP server:
 ```bash
-cargo run --bin tcplistener
+cargo run --bin httpserver
 ```
 
 ### Send a request:
 ```bash
 curl http://127.0.0.1:42069/
+curl http://127.0.0.1:42069/yourproblem
+curl http://127.0.0.1:42069/myproblem
+```
+
+### Run the TCP listener (debugging tool):
+```bash
+cargo run --bin tcplistener
 ```
 
 ### Run tests:
@@ -35,10 +45,13 @@ cargo test
 ```
 src/
 ├── lib.rs              # Module exports
-├── request.rs          # HTTP request line parser
+├── request.rs          # HTTP request parser (request line, headers, body)
 ├── headers.rs          # HTTP header parser
+├── response.rs         # HTTP response writer (status line, headers)
+├── server.rs           # TCP server with pluggable handler
 └── bin/
-    ├── tcplistener.rs  # TCP server implementation
+    ├── httpserver.rs   # Main HTTP server binary
+    ├── tcplistener.rs  # Debugging tool: prints parsed requests
     └── udpsender.rs    # UDP utilities
 ```
 
@@ -47,12 +60,9 @@ src/
 This project demonstrates:
 - **Streaming parsing**: Handles partial/chunked data from network reads
 - **State machine**: Parser tracks completion state
+- **Pluggable handlers**: `serve()` accepts a `Handler` function pointer for custom logic
 - **Rust idioms**: Result types, BufRead trait, ownership patterns
 - **Test-driven development**: Extensive test coverage with property-based testing
-
-## Limitations
-
-Currently parses request line and headers. Body parsing is not yet implemented.
 
 ## Resources
 
