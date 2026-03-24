@@ -8,7 +8,11 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::{headers::Headers, request::request_from_reader, response::write_headers};
+use crate::{
+    headers::Headers,
+    request::{Request, request_from_reader},
+    response::write_headers,
+};
 
 pub struct Server {
     port: String,
@@ -19,18 +23,45 @@ pub struct Server {
 
 impl Server {
     pub fn handle(conn: TcpStream) {
+        // Parse request
         let reader = BufReader::new(&conn);
         let _request = request_from_reader(reader).unwrap();
 
         let mut writer = BufWriter::new(conn);
-        let mut headers = Headers::new();
 
+        // Write response headers
+        let mut headers = Headers::new();
         headers.insert("Content-Type".to_string(), "text/plain".to_string());
         headers.insert("Content-Length".to_string(), "0".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
-
         let _ = write_headers(&mut writer, headers);
+        write!(writer, "\r\n").unwrap(); // newline to signal headers are completed
+
+        // Write response body
+        let _ = handler(&mut writer, _request);
         writer.flush().unwrap();
+    }
+}
+
+struct RequestError {
+    error_code: String,
+    message: String,
+}
+
+fn handler(w: &mut impl Write, req: Request) -> Result<(), RequestError> {
+    match req.request_line.request_target.as_str() {
+        "/your_problem" => Err(RequestError {
+            error_code: "400".to_string(),
+            message: "Your problem is not my problem\n".to_string(),
+        }),
+        "/my_problem" => Err(RequestError {
+            error_code: "500".to_string(),
+            message: "Woopsie, my bad\n".to_string(),
+        }),
+        _ => {
+            let _ = writeln!(w, "All good, frfr");
+            Ok(())
+        }
     }
 }
 
@@ -145,7 +176,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nAll good, frfr\n"
         );
     }
 
@@ -171,7 +202,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nAll good, frfr\n"
         );
     }
 }
