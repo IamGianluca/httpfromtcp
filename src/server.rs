@@ -48,7 +48,7 @@ impl Server {
             Err(e) => {
                 let _ = write_headers(&mut writer, e.error_code, headers);
                 write!(writer, "\r\n").unwrap();
-                writeln!(writer, "{}", e.message).unwrap();
+                write!(writer, "{}", e.message).unwrap();
             }
         };
         writer.flush().unwrap();
@@ -82,11 +82,11 @@ pub fn handler(w: &mut dyn Write, req: &Request) -> Result<(), RequestError> {
     match req.request_line.request_target.as_str() {
         "/yourproblem" => Err(RequestError {
             error_code: StatusCode::ClientError,
-            message: "Your problem is not my problem".to_string(),
+            message: "Your problem is not my problem\n".to_string(),
         }),
         "/myproblem" => Err(RequestError {
             error_code: StatusCode::ServerError,
-            message: "Woopsie, my bad".to_string(),
+            message: "Woopsie, my bad\n".to_string(),
         }),
         _ => {
             let _ = w.write_all(b"All good, frfr\n");
