@@ -13,7 +13,7 @@ fn main() {
     // The () message carries no data — it's just a wake-up call.
 
     // Start server in a background thread
-    let _server = match server::serve(PORT) {
+    let _server = match server::serve(PORT, server::handler) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error starting server: {e}");

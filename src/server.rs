@@ -22,7 +22,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn handle(conn: TcpStream) {
+    pub fn handle(conn: TcpStream, handler: Handler) {
         // Parse request
         let reader = BufReader::new(&conn);
         let request = request_from_reader(reader).unwrap();
@@ -73,12 +73,12 @@ impl Drop for Server {
     }
 }
 
-struct RequestError {
+pub struct RequestError {
     error_code: StatusCode,
     message: String,
 }
 
-fn handler(w: &mut dyn Write, req: &Request) -> Result<(), RequestError> {
+pub fn handler(w: &mut dyn Write, req: &Request) -> Result<(), RequestError> {
     match req.request_line.request_target.as_str() {
         "/yourproblem" => Err(RequestError {
             error_code: StatusCode::ClientError,
@@ -97,7 +97,7 @@ fn handler(w: &mut dyn Write, req: &Request) -> Result<(), RequestError> {
 
 type Handler = fn(&mut dyn Write, &Request) -> Result<(), RequestError>;
 
-pub fn serve(port: u16) -> io::Result<Server> {
+pub fn serve(port: u16, handler: Handler) -> io::Result<Server> {
     let port = format!("127.0.0.1:{port}");
     let listener = Arc::new(TcpListener::bind(&port)?);
     let is_closed = Arc::new(AtomicBool::new(false));
@@ -129,7 +129,7 @@ pub fn serve(port: u16) -> io::Result<Server> {
             };
 
             thread::spawn(move || {
-                Server::handle(server_stream);
+                Server::handle(server_stream, handler);
             });
         }
     });
@@ -150,7 +150,7 @@ mod test {
         sync::atomic::Ordering,
     };
 
-    use crate::server::{Server, serve};
+    use crate::server::{Server, handler, serve};
 
     #[test]
     fn test_serve_returns_server_open_connection() {
@@ -158,7 +158,7 @@ mod test {
         let port = 8888_u16;
 
         // When
-        let result = serve(port).unwrap();
+        let result = serve(port, handler).unwrap();
 
         // Then
         assert!(!result.is_closed.load(Ordering::SeqCst));
@@ -183,7 +183,7 @@ mod test {
         client_stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n").unwrap();
 
         // When
-        Server::handle(server_stream);
+        Server::handle(server_stream, handler);
 
         // Then
         let mut response = String::new();
@@ -206,7 +206,7 @@ mod test {
         client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        Server::handle(server_stream);
+        Server::handle(server_stream, handler);
 
         // Then
         let mut response = String::new();
@@ -229,7 +229,7 @@ mod test {
         client_stream.write_all(b"POST /yourproblem HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        Server::handle(server_stream);
+        Server::handle(server_stream, handler);
 
         // Then
         let mut response = String::new();
@@ -252,7 +252,7 @@ mod test {
         client_stream.write_all(b"POST /myproblem HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        Server::handle(server_stream);
+        Server::handle(server_stream, handler);
 
         // Then
         let mut response = String::new();
