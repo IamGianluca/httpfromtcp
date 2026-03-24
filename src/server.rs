@@ -135,11 +135,9 @@ mod test {
         let mut client_stream = TcpStream::connect(&addr).unwrap();
         let (server_stream, _addr) = listener.accept().unwrap();
 
-        // let reader = BufReader::new(&server_stream);
         client_stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n").unwrap();
 
         // When
-        // let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
         // Then
@@ -163,11 +161,9 @@ mod test {
         // ❯ curl -X POST http://localhost:42069/coffee \
         // -H 'Content-Type: application/json' \
         // -d '{"type": "dark mode", "size": "medium"}'
-        // let reader = BufReader::new(&server_stream);
         client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        // let _request = request_from_reader(reader).unwrap();
         Server::handle(server_stream);
 
         // Then
