@@ -27,7 +27,9 @@ impl Server {
         let reader = BufReader::new(&conn);
         let request = request_from_reader(reader).unwrap();
 
-        let mut writer = BufWriter::new(conn);
+        // Prepare body
+        let mut body_buf: Vec<u8> = Vec::new();
+        let result = handler(&mut body_buf, &request);
 
         // Prepare response headers
         let mut headers = Headers::new();
@@ -35,15 +37,13 @@ impl Server {
         headers.insert("Content-Length".to_string(), "0".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
 
-        // Prepare body
-        let result = handler(request);
-
         // Write response
+        let mut writer = BufWriter::new(conn);
         match result {
             Ok(_) => {
                 let _ = write_headers(&mut writer, StatusCode::Ok, headers);
                 write!(writer, "\r\n").unwrap();
-                writeln!(writer, "All good, frfr").unwrap();
+                writer.write_all(&body_buf).unwrap();
             }
             Err(e) => {
                 let _ = write_headers(&mut writer, e.error_code, headers);
@@ -52,25 +52,6 @@ impl Server {
             }
         };
         writer.flush().unwrap();
-    }
-}
-
-struct RequestError {
-    error_code: StatusCode,
-    message: String,
-}
-
-fn handler(req: Request) -> Result<(), RequestError> {
-    match req.request_line.request_target.as_str() {
-        "/yourproblem" => Err(RequestError {
-            error_code: StatusCode::ClientError,
-            message: "Your problem is not my problem".to_string(),
-        }),
-        "/myproblem" => Err(RequestError {
-            error_code: StatusCode::ServerError,
-            message: "Woopsie, my bad".to_string(),
-        }),
-        _ => Ok(()),
     }
 }
 
@@ -91,6 +72,30 @@ impl Drop for Server {
         }
     }
 }
+
+struct RequestError {
+    error_code: StatusCode,
+    message: String,
+}
+
+fn handler(w: &mut dyn Write, req: &Request) -> Result<(), RequestError> {
+    match req.request_line.request_target.as_str() {
+        "/yourproblem" => Err(RequestError {
+            error_code: StatusCode::ClientError,
+            message: "Your problem is not my problem".to_string(),
+        }),
+        "/myproblem" => Err(RequestError {
+            error_code: StatusCode::ServerError,
+            message: "Woopsie, my bad".to_string(),
+        }),
+        _ => {
+            let _ = w.write_all(b"All good, frfr\n");
+            Ok(())
+        }
+    }
+}
+
+type Handler = fn(&mut dyn Write, &Request) -> Result<(), RequestError>;
 
 pub fn serve(port: u16) -> io::Result<Server> {
     let port = format!("127.0.0.1:{port}");
