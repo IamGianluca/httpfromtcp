@@ -23,9 +23,18 @@ pub struct Server {
 
 impl Server {
     pub fn handle(conn: TcpStream, handler: Handler) {
-        // Parse request
         let reader = BufReader::new(&conn);
-        let request = request_from_reader(reader).unwrap();
+        let request = match request_from_reader(reader) {
+            Ok(r) => r,
+            Err(e) => {
+                let mut writer = BufWriter::new(conn);
+                let headers = Headers::new();
+                let _ = write_headers(&mut writer, StatusCode::ClientError, headers);
+                write!(writer, "\r\n{e}").unwrap();
+                writer.flush().unwrap();
+                return;
+            }
+        };
 
         // Prepare body
         let mut body_buf: Vec<u8> = Vec::new();
@@ -172,7 +181,7 @@ mod test {
     // different behavior.
 
     #[test]
-    fn test_integration_between_request_from_reader_to_server_get_request() {
+    fn test_get_request_returns_200() {
         // Given
         let addr = "127.0.0.1:1112".to_string();
         let listener = TcpListener::bind(&addr).unwrap();
@@ -195,7 +204,7 @@ mod test {
     }
 
     #[test]
-    fn test_integration_between_request_from_reader_to_server_post_request() {
+    fn test_post_request_returns_200() {
         // Given
         let addr = "127.0.0.1:1113".to_string();
         let listener = TcpListener::bind(&addr).unwrap();
@@ -218,7 +227,7 @@ mod test {
     }
 
     #[test]
-    fn test_error_400() {
+    fn test_handler_error_returns_400() {
         // Given
         let addr = "127.0.0.1:8881".to_string();
         let listener = TcpListener::bind(&addr).unwrap();
@@ -241,7 +250,7 @@ mod test {
     }
 
     #[test]
-    fn test_error_500() {
+    fn test_handler_error_returns_500() {
         // Given
         let addr = "127.0.0.1:8210".to_string();
         let listener = TcpListener::bind(&addr).unwrap();
@@ -260,6 +269,29 @@ mod test {
         assert_eq!(
             response,
             "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nWoopsie, my bad\n"
+        );
+    }
+
+    #[test]
+    fn test_malformed_request_returns_400() {
+        // Given
+        let addr = "127.0.0.1:8211".to_string();
+        let listener = TcpListener::bind(&addr).unwrap();
+
+        let mut client_stream = TcpStream::connect(&addr).unwrap();
+        let (server_stream, _addr) = listener.accept().unwrap();
+
+        client_stream.write_all(b"BADREQUEST\r\n\r\n").unwrap();
+
+        // When
+        Server::handle(server_stream, handler);
+
+        // Then
+        let mut response = String::new();
+        client_stream.read_to_string(&mut response).unwrap();
+        assert_eq!(
+            response,
+            "HTTP/1.1 400 Bad Request\r\n\r\nmore than 3 elements to parse"
         );
     }
 }
