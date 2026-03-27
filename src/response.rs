@@ -1,6 +1,5 @@
-use std::io::{self, Write};
-
 use crate::headers::Headers;
+use std::io::{self, Write};
 
 pub struct Writer<W: Write> {
     stream: W,
@@ -12,17 +11,15 @@ impl<W: Write> Writer<W> {
     }
 
     pub fn write_status_line(&mut self, status_code: StatusCode) -> io::Result<()> {
-        let _ = write_status_line(&mut self.stream, status_code);
-        Ok(())
+        write_status_line(&mut self.stream, status_code)
     }
 
     pub fn export_headers(&mut self, headers: Headers) -> io::Result<()> {
-        let _ = write_headers(&mut self.stream, headers);
-        Ok(())
+        write_headers(&mut self.stream, headers)
     }
 
     pub fn write_body(&mut self, p: &[u8]) -> io::Result<usize> {
-        let _ = self.stream.write_all(p);
+        self.stream.write_all(p)?;
         Ok(p.len())
     }
 }
@@ -118,13 +115,14 @@ mod test {
     #[test]
     fn test_write_body() {
         // Given
-        let buf = Vec::new();
-        let mut w = Writer::new(buf);
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
 
         // When
-        let result = w.write_body(b"hello").unwrap();
+        let bytes_written = w.write_body(b"hello").unwrap();
 
         // Then
-        assert_eq!(result, 5);
+        assert_eq!(buf, b"hello");
+        assert_eq!(bytes_written, 5);
     }
 }

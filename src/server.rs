@@ -11,7 +11,7 @@ use std::{
 use crate::{
     headers::Headers,
     request::{Request, request_from_reader},
-    response::{StatusCode, write_headers, write_status_line},
+    response::{StatusCode, Writer, write_headers, write_status_line},
 };
 
 pub struct Server {
@@ -23,6 +23,9 @@ pub struct Server {
 
 impl Server {
     pub fn handle(conn: TcpStream, handler: Handler) {
+        // TODO: integrate Writer struct in this workflow
+
+        // Parse request
         let reader = BufReader::new(&conn);
         let request = match request_from_reader(reader) {
             Ok(r) => r,
@@ -48,22 +51,23 @@ impl Server {
         headers.insert("Connection".to_string(), "close".to_string());
 
         // Write response
-        let mut writer = BufWriter::new(conn);
+        let writer = BufWriter::new(conn);
+        let mut w = Writer::new(writer);
+
         match result {
             Ok(_) => {
-                let _ = write_status_line(&mut writer, StatusCode::Ok);
-                let _ = write_headers(&mut writer, headers);
-                write!(writer, "\r\n").unwrap();
-                writer.write_all(&body_buf).unwrap();
+                let _ = w.write_status_line(StatusCode::Ok);
+                let _ = w.export_headers(headers);
+                let _ = w.write_body(b"\r\n");
+                let _ = w.write_body(&body_buf);
             }
             Err(e) => {
-                let _ = write_status_line(&mut writer, e.error_code);
-                let _ = write_headers(&mut writer, headers);
-                write!(writer, "\r\n").unwrap();
-                write!(writer, "{}", e.message).unwrap();
+                let _ = w.write_status_line(e.error_code);
+                let _ = w.export_headers(headers);
+                let _ = w.write_body(b"\r\n");
+                let _ = w.write_body(&e.message.into_bytes());
             }
         };
-        writer.flush().unwrap();
     }
 }
 
