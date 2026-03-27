@@ -23,8 +23,6 @@ pub struct Server {
 
 impl Server {
     pub fn handle(conn: TcpStream, handler: Handler) {
-        // TODO: integrate Writer struct in this workflow
-
         // Parse request
         let reader = BufReader::new(&conn);
         let request = match request_from_reader(reader) {
@@ -47,7 +45,6 @@ impl Server {
         // Prepare response headers
         let mut headers = Headers::new();
         headers.insert("Content-Type".to_string(), "text/plain".to_string());
-        headers.insert("Content-Length".to_string(), "0".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
 
         // Write response
@@ -57,15 +54,18 @@ impl Server {
         match result {
             Ok(_) => {
                 let _ = w.write_status_line(StatusCode::Ok);
+                headers.insert("Content-Length".to_string(), body_buf.len().to_string());
                 let _ = w.export_headers(headers);
                 let _ = w.write_body(b"\r\n");
                 let _ = w.write_body(&body_buf);
             }
             Err(e) => {
+                let body = e.message.into_bytes();
                 let _ = w.write_status_line(e.error_code);
+                headers.insert("Content-Length".to_string(), body.len().to_string());
                 let _ = w.export_headers(headers);
                 let _ = w.write_body(b"\r\n");
-                let _ = w.write_body(&e.message.into_bytes());
+                let _ = w.write_body(&body);
             }
         };
     }
@@ -206,7 +206,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nAll good, frfr\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 15\r\nConnection: close\r\n\r\nAll good, frfr\n"
         );
     }
 
@@ -229,7 +229,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nAll good, frfr\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 15\r\nConnection: close\r\n\r\nAll good, frfr\n"
         );
     }
 
@@ -252,7 +252,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nYour problem is not my problem\n"
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 31\r\nConnection: close\r\n\r\nYour problem is not my problem\n"
         );
     }
 
@@ -275,7 +275,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\nWoopsie, my bad\n"
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 16\r\nConnection: close\r\n\r\nWoopsie, my bad\n"
         );
     }
 
