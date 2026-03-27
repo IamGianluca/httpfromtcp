@@ -11,7 +11,7 @@ use std::{
 use crate::{
     headers::Headers,
     request::{Request, request_from_reader},
-    response::{StatusCode, write_headers},
+    response::{StatusCode, write_headers, write_status_line},
 };
 
 pub struct Server {
@@ -29,7 +29,8 @@ impl Server {
             Err(e) => {
                 let mut writer = BufWriter::new(conn);
                 let headers = Headers::new();
-                let _ = write_headers(&mut writer, StatusCode::ClientError, headers);
+                let _ = write_status_line(&mut writer, StatusCode::ClientError);
+                let _ = write_headers(&mut writer, headers);
                 write!(writer, "\r\n{e}").unwrap();
                 writer.flush().unwrap();
                 return;
@@ -50,12 +51,14 @@ impl Server {
         let mut writer = BufWriter::new(conn);
         match result {
             Ok(_) => {
-                let _ = write_headers(&mut writer, StatusCode::Ok, headers);
+                let _ = write_status_line(&mut writer, StatusCode::Ok);
+                let _ = write_headers(&mut writer, headers);
                 write!(writer, "\r\n").unwrap();
                 writer.write_all(&body_buf).unwrap();
             }
             Err(e) => {
-                let _ = write_headers(&mut writer, e.error_code, headers);
+                let _ = write_status_line(&mut writer, e.error_code);
+                let _ = write_headers(&mut writer, headers);
                 write!(writer, "\r\n").unwrap();
                 write!(writer, "{}", e.message).unwrap();
             }
@@ -69,7 +72,7 @@ impl Drop for Server {
         // Set is_closed to true
         self.is_closed.store(true, Ordering::SeqCst);
 
-        // create a throwaway TCP connection to unblock incoming()
+        // Create a throwaway TCP connection to unblock incoming()
         let _ = std::net::TcpStream::connect(self.port.clone());
 
         // Drop the server's Arc reference to the listener. The listener won't
