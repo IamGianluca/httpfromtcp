@@ -1,5 +1,5 @@
 use std::{
-    io::{self, BufReader, BufWriter, Write},
+    io::{self, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     sync::{
         Arc,
@@ -11,7 +11,7 @@ use std::{
 use crate::{
     headers::Headers,
     request::{Request, request_from_reader},
-    response::{StatusCode, Writer, write_headers, write_status_line},
+    response::{StatusCode, Writer},
 };
 
 pub struct Server {
@@ -28,46 +28,21 @@ impl Server {
         let request = match request_from_reader(reader) {
             Ok(r) => r,
             Err(e) => {
-                let mut writer = BufWriter::new(conn);
+                let writer = BufWriter::new(conn);
                 let headers = Headers::new();
-                let _ = write_status_line(&mut writer, StatusCode::ClientError);
-                let _ = write_headers(&mut writer, headers);
-                write!(writer, "\r\n{e}").unwrap();
-                writer.flush().unwrap();
+                let mut w = Writer::new(writer);
+                let _ = w.write_status_line(StatusCode::ClientError);
+                let _ = w.export_headers(headers);
+                let _ = w.write_body(b"\r\n");
+                let error_body = format!("{e}");
+                let _ = w.write_body(error_body.as_bytes());
                 return;
             }
         };
 
-        // Prepare body
-        let mut body_buf: Vec<u8> = Vec::new();
-        let result = handler(&mut body_buf, &request);
-
-        // Prepare response headers
-        let mut headers = Headers::new();
-        headers.insert("Content-Type".to_string(), "text/plain".to_string());
-        headers.insert("Connection".to_string(), "close".to_string());
-
         // Write response
-        let writer = BufWriter::new(conn);
-        let mut w = Writer::new(writer);
-
-        match result {
-            Ok(_) => {
-                let _ = w.write_status_line(StatusCode::Ok);
-                headers.insert("Content-Length".to_string(), body_buf.len().to_string());
-                let _ = w.export_headers(headers);
-                let _ = w.write_body(b"\r\n");
-                let _ = w.write_body(&body_buf);
-            }
-            Err(e) => {
-                let body = e.message.into_bytes();
-                let _ = w.write_status_line(e.error_code);
-                headers.insert("Content-Length".to_string(), body.len().to_string());
-                let _ = w.export_headers(headers);
-                let _ = w.write_body(b"\r\n");
-                let _ = w.write_body(&body);
-            }
-        };
+        let mut w = Writer::new(BufWriter::new(conn));
+        handler(&mut w, &request);
     }
 }
 
@@ -89,29 +64,45 @@ impl Drop for Server {
     }
 }
 
-pub struct RequestError {
-    error_code: StatusCode,
-    message: String,
-}
-
-pub fn handler(w: &mut dyn Write, req: &Request) -> Result<(), RequestError> {
+pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
     match req.request_line.request_target.as_str() {
-        "/yourproblem" => Err(RequestError {
-            error_code: StatusCode::ClientError,
-            message: "Your problem is not my problem\n".to_string(),
-        }),
-        "/myproblem" => Err(RequestError {
-            error_code: StatusCode::ServerError,
-            message: "Woopsie, my bad\n".to_string(),
-        }),
+        "/yourproblem" => {
+            let body = b"Your problem is not my problem\n";
+            let mut headers = Headers::new();
+            headers.insert("Content-Type".to_string(), "text/plain".to_string());
+            headers.insert("Content-Length".to_string(), body.len().to_string());
+            headers.insert("Connection".to_string(), "close".to_string());
+            let _ = w.write_status_line(StatusCode::ClientError);
+            let _ = w.export_headers(headers);
+            let _ = w.write_body(b"\r\n");
+            let _ = w.write_body(body);
+        }
+        "/myproblem" => {
+            let body = b"Woopsie, my bad\n";
+            let mut headers = Headers::new();
+            headers.insert("Content-Type".to_string(), "text/plain".to_string());
+            headers.insert("Content-Length".to_string(), body.len().to_string());
+            headers.insert("Connection".to_string(), "close".to_string());
+            let _ = w.write_status_line(StatusCode::ServerError);
+            let _ = w.export_headers(headers);
+            let _ = w.write_body(b"\r\n");
+            let _ = w.write_body(body);
+        }
         _ => {
-            let _ = w.write_all(b"All good, frfr\n");
-            Ok(())
+            let body = b"All good, frfr\n";
+            let mut headers = Headers::new();
+            headers.insert("Content-Type".to_string(), "text/plain".to_string());
+            headers.insert("Content-Length".to_string(), body.len().to_string());
+            headers.insert("Connection".to_string(), "close".to_string());
+            let _ = w.write_status_line(StatusCode::Ok);
+            let _ = w.export_headers(headers);
+            let _ = w.write_body(b"\r\n");
+            let _ = w.write_body(body);
         }
     }
 }
 
-type Handler = fn(&mut dyn Write, &Request) -> Result<(), RequestError>;
+type Handler = fn(&mut Writer<BufWriter<TcpStream>>, &Request);
 
 pub fn serve(port: u16, handler: Handler) -> io::Result<Server> {
     let port = format!("127.0.0.1:{port}");
