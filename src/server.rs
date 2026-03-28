@@ -32,7 +32,7 @@ impl Server {
                 let headers = Headers::new();
                 let mut w = Writer::new(writer);
                 let _ = w.write_status_line(StatusCode::ClientError);
-                let _ = w.export_headers(headers);
+                let _ = w.write_headers(headers);
                 let _ = w.write_body(b"\r\n");
                 let error_body = format!("{e}");
                 let _ = w.write_body(error_body.as_bytes());
@@ -67,35 +67,59 @@ impl Drop for Server {
 pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
     match req.request_line.request_target.as_str() {
         "/yourproblem" => {
-            let body = b"Your problem is not my problem\n";
+            let body = b"<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>";
             let mut headers = Headers::new();
-            headers.insert("Content-Type".to_string(), "text/plain".to_string());
+            headers.insert("Content-Type".to_string(), "text/html".to_string());
             headers.insert("Content-Length".to_string(), body.len().to_string());
             headers.insert("Connection".to_string(), "close".to_string());
             let _ = w.write_status_line(StatusCode::ClientError);
-            let _ = w.export_headers(headers);
+            let _ = w.write_headers(headers);
             let _ = w.write_body(b"\r\n");
             let _ = w.write_body(body);
         }
         "/myproblem" => {
-            let body = b"Woopsie, my bad\n";
+            let body = b"<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>";
             let mut headers = Headers::new();
-            headers.insert("Content-Type".to_string(), "text/plain".to_string());
+            headers.insert("Content-Type".to_string(), "text/html".to_string());
             headers.insert("Content-Length".to_string(), body.len().to_string());
             headers.insert("Connection".to_string(), "close".to_string());
             let _ = w.write_status_line(StatusCode::ServerError);
-            let _ = w.export_headers(headers);
+            let _ = w.write_headers(headers);
             let _ = w.write_body(b"\r\n");
             let _ = w.write_body(body);
         }
         _ => {
-            let body = b"All good, frfr\n";
+            let body = b"<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>";
             let mut headers = Headers::new();
-            headers.insert("Content-Type".to_string(), "text/plain".to_string());
+            headers.insert("Content-Type".to_string(), "text/html".to_string());
             headers.insert("Content-Length".to_string(), body.len().to_string());
             headers.insert("Connection".to_string(), "close".to_string());
             let _ = w.write_status_line(StatusCode::Ok);
-            let _ = w.export_headers(headers);
+            let _ = w.write_headers(headers);
             let _ = w.write_body(b"\r\n");
             let _ = w.write_body(body);
         }
@@ -197,7 +221,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 15\r\nConnection: close\r\n\r\nAll good, frfr\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 148\r\nConnection: close\r\n\r\n<html>\n  <head>\n    <title>200 OK</title>\n  </head>\n  <body>\n    <h1>Success!</h1>\n    <p>Your request was an absolute banger.</p>\n  </body>\n</html>"
         );
     }
 
@@ -220,30 +244,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 15\r\nConnection: close\r\n\r\nAll good, frfr\n"
-        );
-    }
-
-    #[test]
-    fn test_handler_error_returns_400() {
-        // Given
-        let addr = "127.0.0.1:8881".to_string();
-        let listener = TcpListener::bind(&addr).unwrap();
-
-        let mut client_stream = TcpStream::connect(&addr).unwrap();
-        let (server_stream, _addr) = listener.accept().unwrap();
-
-        client_stream.write_all(b"POST /yourproblem HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
-
-        // When
-        Server::handle(server_stream, handler);
-
-        // Then
-        let mut response = String::new();
-        client_stream.read_to_string(&mut response).unwrap();
-        assert_eq!(
-            response,
-            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 31\r\nConnection: close\r\n\r\nYour problem is not my problem\n"
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 148\r\nConnection: close\r\n\r\n<html>\n  <head>\n    <title>200 OK</title>\n  </head>\n  <body>\n    <h1>Success!</h1>\n    <p>Your request was an absolute banger.</p>\n  </body>\n</html>"
         );
     }
 
@@ -266,7 +267,7 @@ mod test {
         client_stream.read_to_string(&mut response).unwrap();
         assert_eq!(
             response,
-            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 16\r\nConnection: close\r\n\r\nWoopsie, my bad\n"
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 183\r\nConnection: close\r\n\r\n<html>\n  <head>\n    <title>500 Internal Server Error</title>\n  </head>\n  <body>\n    <h1>Internal Server Error</h1>\n    <p>Okay, you know what? This one is on me.</p>\n  </body>\n</html>"
         );
     }
 

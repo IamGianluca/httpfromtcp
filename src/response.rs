@@ -14,7 +14,7 @@ impl<W: Write> Writer<W> {
         write_status_line(&mut self.stream, status_code)
     }
 
-    pub fn export_headers(&mut self, headers: Headers) -> io::Result<()> {
+    pub fn write_headers(&mut self, headers: Headers) -> io::Result<()> {
         write_headers(&mut self.stream, headers)
     }
 
@@ -103,7 +103,7 @@ mod test {
         let headers = get_default_headers(13_usize);
 
         // When
-        w.export_headers(headers).unwrap();
+        w.write_headers(headers).unwrap();
 
         // Then
         assert_eq!(
