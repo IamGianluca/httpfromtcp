@@ -1,26 +1,70 @@
 use crate::headers::Headers;
-use std::io::{self, Write};
+use std::io::{self, Error, ErrorKind, Write};
 
 pub struct Writer<W: Write> {
     stream: W,
+    state: WriterState,
+}
+
+enum WriterState {
+    Empty,
+    StatusLineCompleted,
+    HeadersCompleted,
+    Done,
 }
 
 impl<W: Write> Writer<W> {
     pub fn new(stream: W) -> Self {
-        Writer { stream }
+        Writer {
+            stream,
+            state: WriterState::Empty,
+        }
     }
 
     pub fn write_status_line(&mut self, status_code: StatusCode) -> io::Result<()> {
-        write_status_line(&mut self.stream, status_code)
+        match self.state {
+            WriterState::Empty => {
+                let r = write_status_line(&mut self.stream, status_code);
+                self.state = WriterState::StatusLineCompleted;
+                r
+            }
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "status line already written",
+            )),
+        }
     }
 
     pub fn write_headers(&mut self, headers: Headers) -> io::Result<()> {
-        write_headers(&mut self.stream, headers)
+        match self.state {
+            WriterState::StatusLineCompleted => {
+                let r = write_headers(&mut self.stream, headers);
+                self.state = WriterState::HeadersCompleted;
+                r
+            }
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "must call write_status_line first",
+            )),
+        }
     }
 
     pub fn write_body(&mut self, p: &[u8]) -> io::Result<usize> {
-        self.stream.write_all(p)?;
-        Ok(p.len())
+        match self.state {
+            WriterState::HeadersCompleted => {
+                self.stream.write_all(p)?;
+                self.state = WriterState::Done;
+                Ok(p.len())
+            }
+            WriterState::Done => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "body already written",
+            )),
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "must call write_headers first",
+            )),
+        }
     }
 }
 
@@ -55,7 +99,7 @@ pub fn write_headers(w: &mut impl Write, headers: Headers) -> io::Result<()> {
             write!(w, "{}: {}\r\n", key, value)?;
         }
     }
-    Ok(())
+    write!(w, "\r\n")
 }
 
 #[cfg(test)]
@@ -99,6 +143,7 @@ mod test {
         // Given
         let mut buf = Vec::new();
         let mut w = Writer::new(&mut buf);
+        w.state = crate::response::WriterState::StatusLineCompleted;
 
         let headers = get_default_headers(13_usize);
 
@@ -108,7 +153,7 @@ mod test {
         // Then
         assert_eq!(
             buf,
-            b"Content-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n"
+            b"Content-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n\r\n"
         );
     }
 
@@ -117,6 +162,7 @@ mod test {
         // Given
         let mut buf = Vec::new();
         let mut w = Writer::new(&mut buf);
+        w.state = crate::response::WriterState::HeadersCompleted;
 
         // When
         let bytes_written = w.write_body(b"hello").unwrap();

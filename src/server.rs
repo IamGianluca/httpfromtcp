@@ -33,7 +33,6 @@ impl Server {
                 let mut w = Writer::new(writer);
                 let _ = w.write_status_line(StatusCode::ClientError);
                 let _ = w.write_headers(headers);
-                let _ = w.write_body(b"\r\n");
                 let error_body = format!("{e}");
                 let _ = w.write_body(error_body.as_bytes());
                 return;
@@ -82,7 +81,6 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
             headers.insert("Connection".to_string(), "close".to_string());
             let _ = w.write_status_line(StatusCode::ClientError);
             let _ = w.write_headers(headers);
-            let _ = w.write_body(b"\r\n");
             let _ = w.write_body(body);
         }
         "/myproblem" => {
@@ -101,7 +99,6 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
             headers.insert("Connection".to_string(), "close".to_string());
             let _ = w.write_status_line(StatusCode::ServerError);
             let _ = w.write_headers(headers);
-            let _ = w.write_body(b"\r\n");
             let _ = w.write_body(body);
         }
         _ => {
@@ -120,7 +117,6 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
             headers.insert("Connection".to_string(), "close".to_string());
             let _ = w.write_status_line(StatusCode::Ok);
             let _ = w.write_headers(headers);
-            let _ = w.write_body(b"\r\n");
             let _ = w.write_body(body);
         }
     }
