@@ -68,6 +68,30 @@ impl<W: Write> Writer<W> {
             )),
         }
     }
+
+    pub(crate) fn write_chunked_body(&mut self, p: &[u8]) -> io::Result<usize> {
+        match self.state {
+            WriterState::HeadersCompleted => {
+                let n = p.len();
+                write!(self.stream, "{:X}\r\n", n)?;
+                self.stream.write_all(p)?;
+                self.stream.write_all(b"\r\n")?;
+                Ok(n)
+            }
+            _ => Err(Error::new(ErrorKind::InvalidInput, "error")),
+        }
+    }
+
+    pub(crate) fn write_chunked_body_done(&mut self) -> io::Result<usize> {
+        match self.state {
+            WriterState::HeadersCompleted => {
+                self.stream.write_all(b"0\r\n")?;
+                self.stream.write_all(b"\r\n")?;
+                Ok(0)
+            }
+            _ => Err(Error::new(ErrorKind::InvalidInput, "error")),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -109,7 +133,7 @@ mod test {
 
     use test_case::test_case;
 
-    use crate::response::{StatusCode, Writer, get_default_headers};
+    use crate::response::{StatusCode, Writer, WriterState, get_default_headers};
 
     #[test_case(StatusCode::Ok, b"HTTP/1.1 200 OK\r\n")]
     #[test_case(StatusCode::ClientError, b"HTTP/1.1 400 Bad Request\r\n")]
@@ -172,5 +196,35 @@ mod test {
         // Then
         assert_eq!(buf, b"hello");
         assert_eq!(bytes_written, 5);
+    }
+
+    #[test]
+    fn test_chunked_encoding() {
+        // Given
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
+        w.state = WriterState::HeadersCompleted;
+
+        // When
+        let bytes_written = w.write_chunked_body(b"hello").unwrap();
+
+        // Then
+        assert_eq!(buf, b"5\r\nhello\r\n");
+        assert_eq!(bytes_written, 5);
+    }
+
+    #[test]
+    fn test_chunked_encoding_done() {
+        // Given
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
+        w.state = WriterState::HeadersCompleted;
+
+        // When
+        let bytes_written = w.write_chunked_body_done().unwrap();
+
+        // Then
+        assert_eq!(buf, b"0\r\n\r\n");
+        assert_eq!(bytes_written, 0);
     }
 }
