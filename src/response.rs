@@ -1,6 +1,11 @@
 use crate::headers::Headers;
 use std::io::{self, Error, ErrorKind, Write};
 
+/// Provides methods to write an HTTP message:
+///     HTTP-message   = start-line CRLF
+///                      *( field-line CRLF )
+///                      CRLF
+///                      [ message-body ]
 pub struct Writer<W: Write> {
     stream: W,
     state: WriterState,
@@ -56,10 +61,7 @@ impl<W: Write> Writer<W> {
                 self.state = WriterState::Done;
                 Ok(p.len())
             }
-            WriterState::Done => Err(Error::new(
-                ErrorKind::InvalidInput,
-                "body already written",
-            )),
+            WriterState::Done => Err(Error::new(ErrorKind::InvalidInput, "body already written")),
             _ => Err(Error::new(
                 ErrorKind::InvalidInput,
                 "must call write_headers first",

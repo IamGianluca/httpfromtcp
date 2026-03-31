@@ -47,7 +47,7 @@ src/
 ├── lib.rs              # Module exports
 ├── request.rs          # HTTP request parser (request line, headers, body)
 ├── headers.rs          # HTTP header parser
-├── response.rs         # HTTP response writer (status line, headers)
+├── response.rs         # HTTP response writer (status line, headers, body) with enforced write order
 ├── server.rs           # TCP server with pluggable handler
 └── bin/
     ├── httpserver.rs   # Main HTTP server binary
@@ -59,7 +59,7 @@ src/
 
 This project demonstrates:
 - **Streaming parsing**: Handles partial/chunked data from network reads
-- **State machine**: Parser tracks completion state
+- **State machines**: Request parser tracks completion state; `Writer` enforces correct write order (status line → headers → body)
 - **Pluggable handlers**: `serve()` accepts a `Handler` function pointer for custom logic
 - **Rust idioms**: Result types, BufRead trait, ownership patterns
 - **Test-driven development**: Extensive test coverage with property-based testing
