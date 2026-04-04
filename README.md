@@ -11,7 +11,8 @@ This is a solution to the course ["Learn the HTTP Protocol in Go"](https://www.b
 - HTTP body parsing
 - Streaming parser (handles chunked reads)
 - Validates HTTP methods (GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH)
-- HTTP response writing (status line, headers, body)
+- HTTP response writing (status line, headers, body, chunked transfer encoding)
+- Reverse proxy handler: `/httpbin/*` proxies to `https://httpbin.org/*` with chunked streaming
 - Pluggable handler function for custom request handling
 - TCP server on `127.0.0.1:42069` with graceful shutdown
 - Comprehensive test suite
@@ -28,6 +29,7 @@ cargo run --bin httpserver
 curl http://127.0.0.1:42069/
 curl http://127.0.0.1:42069/yourproblem
 curl http://127.0.0.1:42069/myproblem
+curl http://127.0.0.1:42069/httpbin/get
 ```
 
 ### Run the TCP listener (debugging tool):

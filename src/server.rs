@@ -1,5 +1,5 @@
 use std::{
-    io::{self, BufReader, BufWriter},
+    io::{self, BufReader, BufWriter, Read},
     net::{TcpListener, TcpStream},
     sync::{
         Arc,
@@ -64,9 +64,33 @@ impl Drop for Server {
 }
 
 pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
-    match req.request_line.request_target.as_str() {
-        "/yourproblem" => {
-            let body = b"<html>
+    // Proxy handler
+    if let Some(path) = req.request_line.request_target.strip_prefix("/httpbin") {
+        let mut headers = Headers::new();
+        headers.insert("Content-Type".to_string(), "text/plain".to_string()); // TODO:
+        // text/html
+        headers.insert("Transfer-Encoding".to_string(), "chunked".to_string());
+        headers.insert("Connection".to_string(), "close".to_string());
+
+        let _ = w.write_status_line(StatusCode::Ok);
+        let _ = w.write_headers(headers);
+
+        let url = format!("https://httpbin.org{path}");
+        let mut resp = reqwest::blocking::get(url).unwrap();
+
+        let mut buf = [0u8; 1024];
+        loop {
+            let n = resp.read(&mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            let _ = w.write_chunked_body(&buf[..n]);
+        }
+        let _ = w.write_chunked_body_done();
+    } else {
+        match req.request_line.request_target.as_str() {
+            "/yourproblem" => {
+                let body = b"<html>
   <head>
     <title>400 Bad Request</title>
   </head>
@@ -75,16 +99,16 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
     <p>Your request honestly kinda sucked.</p>
   </body>
 </html>";
-            let mut headers = Headers::new();
-            headers.insert("Content-Type".to_string(), "text/html".to_string());
-            headers.insert("Content-Length".to_string(), body.len().to_string());
-            headers.insert("Connection".to_string(), "close".to_string());
-            let _ = w.write_status_line(StatusCode::ClientError);
-            let _ = w.write_headers(headers);
-            let _ = w.write_body(body);
-        }
-        "/myproblem" => {
-            let body = b"<html>
+                let mut headers = Headers::new();
+                headers.insert("Content-Type".to_string(), "text/html".to_string());
+                headers.insert("Content-Length".to_string(), body.len().to_string());
+                headers.insert("Connection".to_string(), "close".to_string());
+                let _ = w.write_status_line(StatusCode::ClientError);
+                let _ = w.write_headers(headers);
+                let _ = w.write_body(body);
+            }
+            "/myproblem" => {
+                let body = b"<html>
   <head>
     <title>500 Internal Server Error</title>
   </head>
@@ -93,16 +117,16 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
     <p>Okay, you know what? This one is on me.</p>
   </body>
 </html>";
-            let mut headers = Headers::new();
-            headers.insert("Content-Type".to_string(), "text/html".to_string());
-            headers.insert("Content-Length".to_string(), body.len().to_string());
-            headers.insert("Connection".to_string(), "close".to_string());
-            let _ = w.write_status_line(StatusCode::ServerError);
-            let _ = w.write_headers(headers);
-            let _ = w.write_body(body);
-        }
-        _ => {
-            let body = b"<html>
+                let mut headers = Headers::new();
+                headers.insert("Content-Type".to_string(), "text/html".to_string());
+                headers.insert("Content-Length".to_string(), body.len().to_string());
+                headers.insert("Connection".to_string(), "close".to_string());
+                let _ = w.write_status_line(StatusCode::ServerError);
+                let _ = w.write_headers(headers);
+                let _ = w.write_body(body);
+            }
+            _ => {
+                let body = b"<html>
   <head>
     <title>200 OK</title>
   </head>
@@ -111,13 +135,14 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
     <p>Your request was an absolute banger.</p>
   </body>
 </html>";
-            let mut headers = Headers::new();
-            headers.insert("Content-Type".to_string(), "text/html".to_string());
-            headers.insert("Content-Length".to_string(), body.len().to_string());
-            headers.insert("Connection".to_string(), "close".to_string());
-            let _ = w.write_status_line(StatusCode::Ok);
-            let _ = w.write_headers(headers);
-            let _ = w.write_body(body);
+                let mut headers = Headers::new();
+                headers.insert("Content-Type".to_string(), "text/html".to_string());
+                headers.insert("Content-Length".to_string(), body.len().to_string());
+                headers.insert("Connection".to_string(), "close".to_string());
+                let _ = w.write_status_line(StatusCode::Ok);
+                let _ = w.write_headers(headers);
+                let _ = w.write_body(body);
+            }
         }
     }
 }

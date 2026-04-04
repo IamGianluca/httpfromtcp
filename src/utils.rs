@@ -20,7 +20,7 @@ impl ChunkReader {
 }
 
 impl Read for ChunkReader {
-    /// Read reads up to len(buf) or num_bytes_per_read bytes from the string per call.
+    /// Reads up to len(buf) or num_bytes_per_read bytes from the string per call.
     /// Returns the number of bytes read, or 0 to indicate EOF.
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we've read all the data, return EOF (0 bytes read)

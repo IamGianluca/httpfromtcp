@@ -69,6 +69,8 @@ impl<W: Write> Writer<W> {
         }
     }
 
+    // Useful for streaming responses where the total length is unknown upfront, e.g. when proxying
+    // to an upstream server, streaming large generated responses, or sending server-sent events.
     pub(crate) fn write_chunked_body(&mut self, p: &[u8]) -> io::Result<usize> {
         match self.state {
             WriterState::HeadersCompleted => {
@@ -119,7 +121,12 @@ pub fn get_default_headers(content_len: usize) -> Headers {
 }
 
 pub fn write_headers(w: &mut impl Write, headers: Headers) -> io::Result<()> {
-    let keys = ["Content-Type", "Content-Length", "Connection"];
+    let keys = [
+        "Content-Type",
+        "Content-Length",
+        "Connection",
+        "Transfer-Encoding",
+    ];
     for key in keys.iter() {
         if let Some(value) = headers.get(key) {
             write!(w, "{}: {}\r\n", key, value)?;
