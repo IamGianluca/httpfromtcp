@@ -66,18 +66,24 @@ impl Drop for Server {
 pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
     // Proxy handler
     if let Some(path) = req.request_line.request_target.strip_prefix("/httpbin") {
+        let url = format!("https://httpbin.org{path}");
+        let mut resp = reqwest::blocking::get(url).unwrap();
+
         let mut headers = Headers::new();
-        headers.insert("Content-Type".to_string(), "text/plain".to_string()); // TODO:
-        // text/html
+        let content_type = resp
+            .headers()
+            .get("content-type") // Header names are lowercase in reqwest
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        headers.insert("Content-Type".to_string(), content_type);
         headers.insert("Transfer-Encoding".to_string(), "chunked".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
 
         let _ = w.write_status_line(StatusCode::Ok);
         let _ = w.write_headers(headers);
 
-        let url = format!("https://httpbin.org{path}");
-        let mut resp = reqwest::blocking::get(url).unwrap();
-
+        // Stream body
         let mut buf = [0u8; 1024];
         loop {
             let n = resp.read(&mut buf).unwrap();
