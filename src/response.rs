@@ -11,10 +11,13 @@ pub struct Writer<W: Write> {
     state: WriterState,
 }
 
+// Batch:     Empty → StatusLineCompleted → HeadersCompleted → Done
+// Streaming: Empty → StatusLineCompleted → HeadersCompleted → ChunkedBodyWritten → Done
 enum WriterState {
     Empty,
     StatusLineCompleted,
     HeadersCompleted,
+    ChunkedBodyWritten,
     Done,
 }
 
@@ -49,7 +52,7 @@ impl<W: Write> Writer<W> {
             }
             _ => Err(Error::new(
                 ErrorKind::InvalidInput,
-                "must call write_status_line first",
+                "must call write_status_line() first",
             )),
         }
     }
@@ -64,7 +67,7 @@ impl<W: Write> Writer<W> {
             WriterState::Done => Err(Error::new(ErrorKind::InvalidInput, "body already written")),
             _ => Err(Error::new(
                 ErrorKind::InvalidInput,
-                "must call write_headers first",
+                "must call write_headers() first",
             )),
         }
     }
@@ -73,25 +76,52 @@ impl<W: Write> Writer<W> {
     // to an upstream server, streaming large generated responses, or sending server-sent events.
     pub(crate) fn write_chunked_body(&mut self, p: &[u8]) -> io::Result<usize> {
         match self.state {
-            WriterState::HeadersCompleted => {
+            WriterState::HeadersCompleted | WriterState::ChunkedBodyWritten => {
                 let n = p.len();
                 write!(self.stream, "{:X}\r\n", n)?;
                 self.stream.write_all(p)?;
                 self.stream.write_all(b"\r\n")?;
+                self.state = WriterState::ChunkedBodyWritten;
                 Ok(n)
             }
-            _ => Err(Error::new(ErrorKind::InvalidInput, "error")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "must call write_headers() first")),
         }
     }
 
     pub(crate) fn write_chunked_body_done(&mut self) -> io::Result<usize> {
         match self.state {
-            WriterState::HeadersCompleted => {
+            WriterState::ChunkedBodyWritten => {
                 self.stream.write_all(b"0\r\n")?;
                 self.stream.write_all(b"\r\n")?;
+                self.state = WriterState::Done;
                 Ok(0)
             }
-            _ => Err(Error::new(ErrorKind::InvalidInput, "error")),
+            _ => Err(Error::new(ErrorKind::InvalidInput, "must call write_chunked_body() first")),
+        }
+    }
+
+    pub fn write_trailers(&mut self, headers: Headers) -> io::Result<()> {
+        match self.state {
+            WriterState::ChunkedBodyWritten => {
+                let trailer_names = headers.get("trailer").cloned().ok_or_else(|| {
+                    Error::new(ErrorKind::NotFound, "no trailer found in headers")
+                })?;
+                self.stream.write_all(b"0\r\n")?;
+                for trailer in trailer_names.split(",") {
+                    let trailer = trailer.trim();
+                    let value = headers.get(trailer).ok_or_else(|| {
+                        Error::new(ErrorKind::InvalidInput, "declared trailer missing from headers")
+                    })?;
+                    write!(self.stream, "{}: {}\r\n", trailer, value)?;
+                }
+                self.stream.write_all(b"\r\n")?;
+                self.state = WriterState::Done;
+                Ok(())
+            }
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "must call write_chunked_body() first",
+            )),
         }
     }
 }
@@ -140,6 +170,7 @@ mod test {
 
     use test_case::test_case;
 
+    use crate::headers::Headers;
     use crate::response::{StatusCode, Writer, WriterState, get_default_headers};
 
     #[test_case(StatusCode::Ok, b"HTTP/1.1 200 OK\r\n")]
@@ -225,7 +256,7 @@ mod test {
         // Given
         let mut buf = Vec::new();
         let mut w = Writer::new(&mut buf);
-        w.state = WriterState::HeadersCompleted;
+        w.state = WriterState::ChunkedBodyWritten;
 
         // When
         let bytes_written = w.write_chunked_body_done().unwrap();
@@ -233,5 +264,63 @@ mod test {
         // Then
         assert_eq!(buf, b"0\r\n\r\n");
         assert_eq!(bytes_written, 0);
+    }
+
+    #[test]
+    fn test_write_trailers() {
+        // Given
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
+        w.state = crate::response::WriterState::ChunkedBodyWritten;
+
+        let mut headers = get_default_headers(13_usize);
+        headers.inner.remove("Content-Length");
+        headers.insert("Trailer".to_string(), "X-Content-Length".to_string());
+        headers.insert("X-Content-Length".to_string(), "15".to_string());
+
+        // When
+        w.write_trailers(headers).unwrap();
+
+        // Then
+        assert_eq!(buf, b"0\r\nX-Content-Length: 15\r\n\r\n");
+    }
+    #[test]
+    fn test_write_trailers_raises_error_if_trailers_header_is_missing() {
+        // Given
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
+        w.state = crate::response::WriterState::ChunkedBodyWritten;
+
+        let mut headers = get_default_headers(13_usize);
+        headers.inner.remove("Content-Length");
+        headers.insert("X-Content-Length".to_string(), "15".to_string());
+
+        // When
+        let result = w.write_trailers(headers);
+
+        // Then
+        assert!(result.is_err());
+    }
+
+    #[test_case(WriterState::Empty, false)]
+    #[test_case(WriterState::StatusLineCompleted, false)]
+    #[test_case(WriterState::HeadersCompleted, false)]
+    #[test_case(WriterState::ChunkedBodyWritten, true)]
+    #[test_case(WriterState::Done, false)]
+    fn test_write_trailers_state_machine(state: WriterState, should_succeed: bool) {
+        // Given
+        let mut buf = Vec::new();
+        let mut w = Writer::new(&mut buf);
+        w.state = state;
+
+        let mut headers = Headers::new();
+        headers.insert("Trailer".to_string(), "X-Content-Length".to_string());
+        headers.insert("X-Content-Length".to_string(), "15".to_string());
+
+        // When
+        let result = w.write_trailers(headers);
+
+        // Then
+        assert_eq!(result.is_ok(), should_succeed);
     }
 }
