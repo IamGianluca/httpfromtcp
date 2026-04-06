@@ -14,6 +14,8 @@ use crate::{
     response::{StatusCode, Writer},
 };
 
+use sha2::{Digest, Sha256};
+
 pub struct Server {
     port: String,
     listener: Option<Arc<TcpListener>>,
@@ -79,20 +81,48 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) -> io::Resul
         headers.insert("Content-Type".to_string(), content_type);
         headers.insert("Transfer-Encoding".to_string(), "chunked".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
+        if path == "/html" {
+            headers.insert("Trailer".to_string(), "X-Content-SHA256, X-Content-Length".to_string());
+        }
 
+        let has_trailers = headers.get("trailer").is_some();
         w.write_status_line(StatusCode::Ok)?;
         w.write_headers(headers)?;
 
         // Stream body
         let mut buf = [0u8; 1024];
+        let mut hasher = Sha256::new();
+        let mut body_len = 0usize;
         loop {
-            let n = resp.read(&mut buf).unwrap();
+            let n = resp.read(&mut buf)?;
             if n == 0 {
                 break;
             }
             w.write_chunked_body(&buf[..n])?;
+            if has_trailers {
+                hasher.update(&buf[..n]);
+                body_len += n;
+            }
         }
-        w.write_chunked_body_done()?;
+
+        return match has_trailers {
+            true => {
+                let hash = hasher.finalize();
+                let hex = hash
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
+                let mut trailer_headers = Headers::new();
+                trailer_headers.insert("X-Content-SHA256".to_string(), hex);
+                trailer_headers.insert("X-Content-Length".to_string(), body_len.to_string());
+                w.write_trailers(trailer_headers)?;
+                Ok(())
+            }
+            false => {
+                w.write_chunked_body_done()?;
+                Ok(())
+            }
+        };
     } else {
         match req.request_line.request_target.as_str() {
             "/yourproblem" => {

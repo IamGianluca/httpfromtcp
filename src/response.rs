@@ -84,7 +84,10 @@ impl<W: Write> Writer<W> {
                 self.state = WriterState::ChunkedBodyWritten;
                 Ok(n)
             }
-            _ => Err(Error::new(ErrorKind::InvalidInput, "must call write_headers() first")),
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "must call write_headers() first",
+            )),
         }
     }
 
@@ -96,23 +99,19 @@ impl<W: Write> Writer<W> {
                 self.state = WriterState::Done;
                 Ok(0)
             }
-            _ => Err(Error::new(ErrorKind::InvalidInput, "must call write_chunked_body() first")),
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "must call write_chunked_body() first",
+            )),
         }
     }
 
     pub fn write_trailers(&mut self, headers: Headers) -> io::Result<()> {
         match self.state {
             WriterState::ChunkedBodyWritten => {
-                let trailer_names = headers.get("trailer").cloned().ok_or_else(|| {
-                    Error::new(ErrorKind::NotFound, "no trailer found in headers")
-                })?;
                 self.stream.write_all(b"0\r\n")?;
-                for trailer in trailer_names.split(",") {
-                    let trailer = trailer.trim();
-                    let value = headers.get(trailer).ok_or_else(|| {
-                        Error::new(ErrorKind::InvalidInput, "declared trailer missing from headers")
-                    })?;
-                    write!(self.stream, "{}: {}\r\n", trailer, value)?;
+                for (key, value) in &headers.inner {
+                    write!(self.stream, "{}: {}\r\n", key, value)?;
                 }
                 self.stream.write_all(b"\r\n")?;
                 self.state = WriterState::Done;
@@ -156,6 +155,7 @@ pub fn write_headers(w: &mut impl Write, headers: Headers) -> io::Result<()> {
         "Content-Length",
         "Connection",
         "Transfer-Encoding",
+        "Trailer",
     ];
     for key in keys.iter() {
         if let Some(value) = headers.get(key) {
@@ -273,33 +273,14 @@ mod test {
         let mut w = Writer::new(&mut buf);
         w.state = crate::response::WriterState::ChunkedBodyWritten;
 
-        let mut headers = get_default_headers(13_usize);
-        headers.inner.remove("Content-Length");
-        headers.insert("Trailer".to_string(), "X-Content-Length".to_string());
+        let mut headers = Headers::new();
         headers.insert("X-Content-Length".to_string(), "15".to_string());
 
         // When
         w.write_trailers(headers).unwrap();
 
-        // Then
-        assert_eq!(buf, b"0\r\nX-Content-Length: 15\r\n\r\n");
-    }
-    #[test]
-    fn test_write_trailers_raises_error_if_trailers_header_is_missing() {
-        // Given
-        let mut buf = Vec::new();
-        let mut w = Writer::new(&mut buf);
-        w.state = crate::response::WriterState::ChunkedBodyWritten;
-
-        let mut headers = get_default_headers(13_usize);
-        headers.inner.remove("Content-Length");
-        headers.insert("X-Content-Length".to_string(), "15".to_string());
-
-        // When
-        let result = w.write_trailers(headers);
-
-        // Then
-        assert!(result.is_err());
+        // Then: keys are lowercase because Headers::insert() normalizes them
+        assert_eq!(buf, b"0\r\nx-content-length: 15\r\n\r\n");
     }
 
     #[test_case(WriterState::Empty, false)]
@@ -314,7 +295,6 @@ mod test {
         w.state = state;
 
         let mut headers = Headers::new();
-        headers.insert("Trailer".to_string(), "X-Content-Length".to_string());
         headers.insert("X-Content-Length".to_string(), "15".to_string());
 
         // When

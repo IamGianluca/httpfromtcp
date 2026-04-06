@@ -11,8 +11,9 @@ This is a solution to the course ["Learn the HTTP Protocol in Go"](https://www.b
 - HTTP body parsing
 - Streaming parser (handles chunked reads)
 - Validates HTTP methods (GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH)
-- HTTP response writing (status line, headers, body, chunked transfer encoding)
+- HTTP response writing (status line, headers, body, chunked transfer encoding, trailers)
 - Reverse proxy handler: `/httpbin/*` proxies to `https://httpbin.org/*` with chunked streaming
+- Trailer support: `/httpbin/html` appends `X-Content-SHA256` and `X-Content-Length` trailers computed from the streamed body
 - Pluggable handler function for custom request handling
 - TCP server on `127.0.0.1:42069` with graceful shutdown
 - Comprehensive test suite
@@ -30,6 +31,7 @@ curl http://127.0.0.1:42069/
 curl http://127.0.0.1:42069/yourproblem
 curl http://127.0.0.1:42069/myproblem
 curl http://127.0.0.1:42069/httpbin/get
+curl -v --raw http://127.0.0.1:42069/httpbin/html  # shows chunked body + trailers
 ```
 
 ### Run the TCP listener (debugging tool):
@@ -61,7 +63,7 @@ src/
 
 This project demonstrates:
 - **Streaming parsing**: Handles partial/chunked data from network reads
-- **State machines**: Request parser tracks completion state; `Writer` enforces correct write order (status line → headers → body)
+- **State machines**: Request parser tracks completion state; `Writer` enforces correct write order (status line → headers → body/chunks → trailers)
 - **Pluggable handlers**: `serve()` accepts a `Handler` function pointer for custom logic
 - **Rust idioms**: Result types, BufRead trait, ownership patterns
 - **Test-driven development**: Extensive test coverage with property-based testing
