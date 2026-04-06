@@ -14,6 +14,7 @@ This is a solution to the course ["Learn the HTTP Protocol in Go"](https://www.b
 - HTTP response writing (status line, headers, body, chunked transfer encoding, trailers)
 - Reverse proxy handler: `/httpbin/*` proxies to `https://httpbin.org/*` with chunked streaming
 - Trailer support: `/httpbin/html` appends `X-Content-SHA256` and `X-Content-Length` trailers computed from the streamed body
+- Binary response: `/video` serves a local MP4 file with `Content-Type: video/mp4`
 - Pluggable handler function for custom request handling
 - TCP server on `127.0.0.1:42069` with graceful shutdown
 - Comprehensive test suite
@@ -32,6 +33,7 @@ curl http://127.0.0.1:42069/yourproblem
 curl http://127.0.0.1:42069/myproblem
 curl http://127.0.0.1:42069/httpbin/get
 curl -v --raw http://127.0.0.1:42069/httpbin/html  # shows chunked body + trailers
+# open http://127.0.0.1:42069/video in a browser to stream the video
 ```
 
 ### Run the TCP listener (debugging tool):

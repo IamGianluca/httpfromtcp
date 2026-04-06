@@ -82,7 +82,10 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) -> io::Resul
         headers.insert("Transfer-Encoding".to_string(), "chunked".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
         if path == "/html" {
-            headers.insert("Trailer".to_string(), "X-Content-SHA256, X-Content-Length".to_string());
+            headers.insert(
+                "Trailer".to_string(),
+                "X-Content-SHA256, X-Content-Length".to_string(),
+            );
         }
 
         let has_trailers = headers.get("trailer").is_some();
@@ -160,6 +163,16 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) -> io::Resul
                 w.write_status_line(StatusCode::ServerError)?;
                 w.write_headers(headers)?;
                 w.write_body(body)?;
+            }
+            "/video" => {
+                let body = std::fs::read("./assets/vim.mp4")?;
+                let mut headers = Headers::new();
+                headers.insert("Content-Type".to_string(), "video/mp4".to_string());
+                headers.insert("Content-Length".to_string(), body.len().to_string());
+                headers.insert("Connection".to_string(), "close".to_string());
+                w.write_status_line(StatusCode::Ok)?;
+                w.write_headers(headers)?;
+                w.write_body(&body)?;
             }
             _ => {
                 let body = b"<html>
