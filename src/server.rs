@@ -22,7 +22,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn handle(conn: TcpStream, handler: Handler) {
+    pub fn handle(conn: TcpStream, handler: Handler) -> io::Result<()> {
         // Parse request
         let reader = BufReader::new(&conn);
         let request = match request_from_reader(reader) {
@@ -31,17 +31,17 @@ impl Server {
                 let writer = BufWriter::new(conn);
                 let headers = Headers::new();
                 let mut w = Writer::new(writer);
-                let _ = w.write_status_line(StatusCode::ClientError);
-                let _ = w.write_headers(headers);
+                w.write_status_line(StatusCode::ClientError)?;
+                w.write_headers(headers)?;
                 let error_body = format!("{e}");
-                let _ = w.write_body(error_body.as_bytes());
-                return;
+                w.write_body(error_body.as_bytes())?;
+                return Ok(());
             }
         };
 
         // Write response
         let mut w = Writer::new(BufWriter::new(conn));
-        handler(&mut w, &request);
+        handler(&mut w, &request)
     }
 }
 
@@ -63,7 +63,7 @@ impl Drop for Server {
     }
 }
 
-pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
+pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) -> io::Result<()> {
     // Proxy handler
     if let Some(path) = req.request_line.request_target.strip_prefix("/httpbin") {
         let url = format!("https://httpbin.org{path}");
@@ -80,8 +80,8 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
         headers.insert("Transfer-Encoding".to_string(), "chunked".to_string());
         headers.insert("Connection".to_string(), "close".to_string());
 
-        let _ = w.write_status_line(StatusCode::Ok);
-        let _ = w.write_headers(headers);
+        w.write_status_line(StatusCode::Ok)?;
+        w.write_headers(headers)?;
 
         // Stream body
         let mut buf = [0u8; 1024];
@@ -90,9 +90,9 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
             if n == 0 {
                 break;
             }
-            let _ = w.write_chunked_body(&buf[..n]);
+            w.write_chunked_body(&buf[..n])?;
         }
-        let _ = w.write_chunked_body_done();
+        w.write_chunked_body_done()?;
     } else {
         match req.request_line.request_target.as_str() {
             "/yourproblem" => {
@@ -109,9 +109,9 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
                 headers.insert("Content-Type".to_string(), "text/html".to_string());
                 headers.insert("Content-Length".to_string(), body.len().to_string());
                 headers.insert("Connection".to_string(), "close".to_string());
-                let _ = w.write_status_line(StatusCode::ClientError);
-                let _ = w.write_headers(headers);
-                let _ = w.write_body(body);
+                w.write_status_line(StatusCode::ClientError)?;
+                w.write_headers(headers)?;
+                w.write_body(body)?;
             }
             "/myproblem" => {
                 let body = b"<html>
@@ -127,9 +127,9 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
                 headers.insert("Content-Type".to_string(), "text/html".to_string());
                 headers.insert("Content-Length".to_string(), body.len().to_string());
                 headers.insert("Connection".to_string(), "close".to_string());
-                let _ = w.write_status_line(StatusCode::ServerError);
-                let _ = w.write_headers(headers);
-                let _ = w.write_body(body);
+                w.write_status_line(StatusCode::ServerError)?;
+                w.write_headers(headers)?;
+                w.write_body(body)?;
             }
             _ => {
                 let body = b"<html>
@@ -145,15 +145,16 @@ pub fn handler(w: &mut Writer<BufWriter<TcpStream>>, req: &Request) {
                 headers.insert("Content-Type".to_string(), "text/html".to_string());
                 headers.insert("Content-Length".to_string(), body.len().to_string());
                 headers.insert("Connection".to_string(), "close".to_string());
-                let _ = w.write_status_line(StatusCode::Ok);
-                let _ = w.write_headers(headers);
-                let _ = w.write_body(body);
+                w.write_status_line(StatusCode::Ok)?;
+                w.write_headers(headers)?;
+                w.write_body(body)?;
             }
         }
     }
+    Ok(())
 }
 
-type Handler = fn(&mut Writer<BufWriter<TcpStream>>, &Request);
+type Handler = fn(&mut Writer<BufWriter<TcpStream>>, &Request) -> io::Result<()>;
 
 pub fn serve(port: u16, handler: Handler) -> io::Result<Server> {
     let port = format!("127.0.0.1:{port}");
@@ -187,7 +188,7 @@ pub fn serve(port: u16, handler: Handler) -> io::Result<Server> {
             };
 
             thread::spawn(move || {
-                Server::handle(server_stream, handler);
+                let _ = Server::handle(server_stream, handler);
             });
         }
     });
@@ -241,7 +242,7 @@ mod test {
         client_stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n").unwrap();
 
         // When
-        Server::handle(server_stream, handler);
+        Server::handle(server_stream, handler).unwrap();
 
         // Then
         let mut response = String::new();
@@ -264,7 +265,7 @@ mod test {
         client_stream.write_all(b"POST /coffee HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        Server::handle(server_stream, handler);
+        Server::handle(server_stream, handler).unwrap();
 
         // Then
         let mut response = String::new();
@@ -287,7 +288,7 @@ mod test {
         client_stream.write_all(b"POST /myproblem HTTP/1.1\r\nHost: localhost:42069\r\nContent-Type: application/json\r\nContent-Length: 39\r\n\r\n{\"type\": \"dark mode\", \"size\": \"medium\"}").unwrap();
 
         // When
-        Server::handle(server_stream, handler);
+        Server::handle(server_stream, handler).unwrap();
 
         // Then
         let mut response = String::new();
@@ -310,7 +311,7 @@ mod test {
         client_stream.write_all(b"BADREQUEST\r\n\r\n").unwrap();
 
         // When
-        Server::handle(server_stream, handler);
+        Server::handle(server_stream, handler).unwrap();
 
         // Then
         let mut response = String::new();
